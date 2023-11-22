@@ -1,0 +1,12 @@
+black
+numpy
+torch
+scipy
+flake8
+datasets
+git+https://github.com/huggingface/transformers.git@main
+pytorch-lightning
+soundfile
+librosa
+pyyaml
+torchmetrics

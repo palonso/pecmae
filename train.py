@@ -9,6 +9,8 @@ import yaml
 from datasets import Dataset
 from torch import optim, nn, utils
 
+seed = 42
+
 
 def dataset_generator(metadata_file: Path, data_dir: Path):
     with open(metadata_file, "r") as f:
@@ -44,7 +46,7 @@ class MLP(L.LightningModule):
         )
         self.out_size = out_size
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx, split="train"):
         # training_step defines the train loop.
         # it is independent of forward
         x = batch["feature"]
@@ -53,7 +55,7 @@ class MLP(L.LightningModule):
         y_hat = self.MLP(x)
         loss = self.loss(y_hat, y)
         self.log(
-            "train_loss",
+            f"{split}_loss",
             loss,
             on_step=False,
             on_epoch=True,
@@ -63,7 +65,7 @@ class MLP(L.LightningModule):
         acc = self.accuracy(y_hat, y)
 
         self.log(
-            "train_acc",
+            f"{split}_acc",
             acc,
             on_step=False,
             on_epoch=True,
@@ -73,40 +75,27 @@ class MLP(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        # training_step defines the train loop.
-        # it is independent of forward
-        x = batch["feature"]
-        y = batch["label"]
+        self.training_step(batch, batch_idx, split="val")
 
-        y_hat = self.MLP(x)
-        loss = self.loss(y_hat, y)
-        self.log(
-            "val_loss",
-            loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
-
-        acc = self.accuracy(y_hat, y)
-        self.log(
-            "val_acc",
-            acc,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
-        return loss
+    def test_step(self, batch, batch_idx):
+        self.training_step(batch, batch_idx, split="test")
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=1e-4, weight_decay=1e-5)
         return optimizer
 
 
-def average(examples: list):
+def average_encodec(examples: list):
     examples["feature"] = [
         np.array(feature).squeeze().mean(axis=0)[:2245]
         for feature in examples["feature"]
+    ]
+    return examples
+
+
+def average_encodecmae(examples: list):
+    examples["feature"] = [
+        np.array(feature).squeeze().mean(axis=0) for feature in examples["feature"]
     ]
     return examples
 
@@ -136,7 +125,9 @@ def label_to_idx(examples: list):
     return examples
 
 
-def train(data_dir: Path = None, metadata_file: Path = None):
+def train(
+    data_dir: Path = None, metadata_file: Path = None, feature_type: str = "encodec"
+):
     ds = Dataset.from_generator(
         dataset_generator,
         gen_kwargs={
@@ -146,7 +137,10 @@ def train(data_dir: Path = None, metadata_file: Path = None):
     )
 
     # compress rows
-    ds = ds.map(average, batched=True)
+    if feature_type == "encodec":
+        ds = ds.map(average_encodec, batched=True, num_proc=32, batch_size=32)
+    elif feature_type == "encodecmae":
+        ds = ds.map(average_encodecmae, batched=True, num_proc=32, batch_size=32)
 
     # onehot encode
     ds = ds.map(label_to_idx, batched=True, batch_size=len(ds))
@@ -154,16 +148,24 @@ def train(data_dir: Path = None, metadata_file: Path = None):
     # norm
     ds = ds.map(norm, batched=True, batch_size=len(ds))
 
-    ds = ds.train_test_split(test_size=0.1, seed=42)
-
+    # put dataset to CUDA
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ds = ds.with_format("torch", device=device)
 
-    mlp = MLP(in_size=2245, out_size=10, hidden_size=128)
+    ds = ds.train_test_split(test_size=0.1, seed=seed)
+    ds_train = ds["train"]
+    ds_test = ds["test"]
+    ds_tran_val = ds_train.train_test_split(test_size=0.1, seed=seed)
+    ds_train = ds_tran_val["train"]
+    ds_val = ds_tran_val["test"]
 
-    train_loader = utils.data.DataLoader(ds["train"], batch_size=32, shuffle=True)
-    # TODO: add a separate test loader
-    val_loader = utils.data.DataLoader(ds["test"], batch_size=32)
+    in_size = ds_train["feature"][0].shape[0]
+
+    mlp = MLP(in_size=in_size, out_size=10, hidden_size=128)
+
+    loader_train = utils.data.DataLoader(ds_train, batch_size=32, shuffle=True)
+    loader_val = utils.data.DataLoader(ds_val, batch_size=64)
+    loader_test = utils.data.DataLoader(ds_test, batch_size=64)
 
     trainer = L.Trainer(
         max_epochs=10,
@@ -171,13 +173,21 @@ def train(data_dir: Path = None, metadata_file: Path = None):
         reload_dataloaders_every_n_epochs=1,
         num_sanity_val_steps=0,
     )
-    trainer.fit(mlp, train_loader, val_loader)
+    trainer.fit(mlp, loader_train, loader_val)
+    trainer.test(mlp, loader_test)
 
 
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--data-dir", type=Path, required=True)
     parser.add_argument("--metadata-file", type=Path, required=True)
+    parser.add_argument(
+        "--feature-type", type=str, required=True, choices=["encodec", "encodecmae"]
+    )
 
     args = parser.parse_args()
-    train(data_dir=args.data_dir, metadata_file=args.metadata_file)
+    train(
+        data_dir=args.data_dir,
+        metadata_file=args.metadata_file,
+        feature_type=args.feature_type,
+    )

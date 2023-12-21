@@ -34,7 +34,7 @@ class ZinemaNet(L.LightningModule):
         self,
         time_dim: int = 300,
         feat_dim: int = 768,
-        n_classes: int = 10,
+        n_labels: int = 10,
         hidden_size: int = 128,
         protos: int = 1,
         batch_size: int = 32,
@@ -43,20 +43,28 @@ class ZinemaNet(L.LightningModule):
 
         self.time_dim = time_dim
         self.feat_dim = feat_dim
-        self.n_classes = n_classes
+        self.n_labels = n_labels
         self.hidden_size = hidden_size
         self.protos = protos
         self.n_protos = self.protos.shape[0]
+        self.n_protos_per_class = self.n_protos // self.n_labels
 
         self.protos = nn.Parameter(data=torch.tensor(self.protos), requires_grad=True)
-        self.linear = torch.nn.Linear(self.n_protos, self.n_classes)
+        self.linear = torch.nn.Linear(self.n_protos, self.n_labels)
+
+        # init linear weights to direct connection to the class
+        lin_weights = np.hstack(
+            [[i] * self.n_protos_per_class for i in range(self.n_labels)]
+        )
+        lin_weights = torch.nn.functional.one_hot(torch.tensor(lin_weights))
+        self.linear.weight = nn.Parameter(data=lin_weights.float(), requires_grad=True)
 
         # self.l2 = nn.MSELoss()
         self.xent = nn.CrossEntropyLoss()
 
         self.accuracy = torchmetrics.classification.Accuracy(
             task="multiclass",
-            num_classes=n_classes,
+            num_classes=n_labels,
         )
 
     def training_step(self, batch, batch_idx, split="train"):
@@ -284,7 +292,7 @@ def train(
     model = ZinemaNet(
         time_dim=time_dim,
         feat_dim=feat_dim,
-        n_classes=n_labels,
+        n_labels=n_labels,
         protos=protos,
     )
 

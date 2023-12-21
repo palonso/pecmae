@@ -13,6 +13,8 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from torch import optim, nn, utils
 from sklearn.cluster import KMeans
 
+from similarities import BilinearSimilarity, InfoNCE
+
 seed = 42
 
 
@@ -57,9 +59,14 @@ class ZinemaNet(L.LightningModule):
             [[i] * self.n_protos_per_class for i in range(self.n_labels)]
         )
         lin_weights = torch.nn.functional.one_hot(torch.tensor(lin_weights))
-        self.linear.weight = nn.Parameter(data=lin_weights.float(), requires_grad=True)
+        print(lin_weights.T)
+        self.linear.weight = nn.Parameter(
+            data=lin_weights.float().T, requires_grad=True
+        )
 
         # self.l2 = nn.MSELoss()
+        #  self.bilinear = BilinearSimilarity(n_features=self.feat_dim, device="cuda:0")
+        self.info_nce = InfoNCE(negative_mode=None)
         self.xent = nn.CrossEntropyLoss()
 
         self.accuracy = torchmetrics.classification.Accuracy(
@@ -73,33 +80,46 @@ class ZinemaNet(L.LightningModule):
         x = batch["feature"]
         y = batch["label"]
 
-        x = x.unsqueeze(1).repeat(1, self.n_protos, 1, 1)
+        # x = x.unsqueeze(1).repeat(1, self.n_protos, 1, 1)
         # print("x_shape", x.shape)
-        protos_batch = (
-            self.protos.unsqueeze(0).repeat(x.shape[0], 1, 1, 1).to(self.device)
-        )
+        # protos_batch = (
+        #     self.protos.unsqueeze(0).repeat(x.shape[0], 1, 1, 1).to(self.device)
+        # )
         # print("protos_batch_shape", protos_batch.shape)
 
-        distance = torch.cdist(x, protos_batch)
+        # distance = torch.cdist(x, protos_batch)
         # print("distance_shape", distance.shape)
 
         # todo: improve
-        distance_reduce = distance.mean(dim=[2, 3])
+        # distance_reduce = distance.mean(dim=[2, 3])
         # print("distance_reduce_shape", distance_reduce.shape)
 
-        loss_p = torch.mean(torch.min(distance_reduce, dim=1).values) + torch.mean(
-            torch.min(distance_reduce, dim=0).values
-        )
+        # loss_p = torch.mean(torch.min(distance_reduce, dim=1).values) + torch.mean(
+        #     torch.min(distance_reduce, dim=0).values
+        # )
+        # x = torch.mean(x, dim=[1])
+        # protos = torch.mean(self.protos, dim=[1])
+        x = x.flatten(1, 2)
+        protos = self.protos.flatten(1, 2)
 
-        y_hat = self.linear(distance_reduce)
+        # distance = self.bilinear(x, protos)
+        similarity = self.info_nce(x, protos, output="logits")
+        distance = torch.exp(-similarity)
+        self.log(f"{split}_distance", distance.mean())
 
-        loss_c = self.xent(y_hat, y)
+        y_hat = self.linear(similarity)
 
-        # TODO: try to solve classification for now
-        loss = loss_p + loss_c
-        # loss = loss_c
+        temp = 0.1
+        loss_c = self.xent(y_hat / temp, y)
+
+        # minimice distance from each proto to the closest sample
+        loss_p = torch.mean(torch.min(distance, dim=0).values)
+        alpha = 0.7
+        loss = alpha * loss_p + (1 - alpha) * loss_c
 
         self.log(f"{split}_loss", loss, prog_bar=True)
+        self.log(f"{split}_proto_loss", loss_p)
+        self.log(f"{split}_class_loss", loss_c)
 
         acc = self.accuracy(y_hat, y)
 
@@ -114,7 +134,7 @@ class ZinemaNet(L.LightningModule):
         self.training_step(batch, batch_idx, split="test")
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=1e-3, weight_decay=1e-5)
+        optimizer = optim.Adam(self.parameters(), lr=1e-4, weight_decay=1e-5)
         return optimizer
 
 
@@ -215,18 +235,18 @@ def create_protos(
 
             pk.dump(kmeans_data, open(kmeans_file, "wb"))
 
+        if protos_init == "kmeans-samples":
+            print("using kmeans  closest sample as protos")
+            key = "samples"
+        elif protos_init == "kmeans-centers":
+            key = "centers"
+
+        protos = [kmeans_data[f"label.{label}.{key}"] for label in labels]
+        protos = np.hstack(protos)
+        protos = protos.reshape(n_protos, *shape)
+
     else:
         raise ValueError(f"protos_init {protos_init} not supported")
-
-    if protos_init == "kmeans-samples":
-        print("using kmeans  closest sample as protos")
-        key = "samples"
-    elif protos_init == "kmeans-centers":
-        key = "centers"
-
-    protos = [kmeans_data[f"label.{label}.{key}"] for label in labels]
-    protos = np.hstack(protos)
-    protos = protos.reshape(n_protos, *shape)
 
     return protos
 
@@ -303,7 +323,7 @@ def train(
     logger = TensorBoardLogger("tb_logs", name="zinemanet")
 
     trainer = L.Trainer(
-        max_epochs=200,
+        max_epochs=1000,
         devices=[0],
         reload_dataloaders_every_n_epochs=1,
         num_sanity_val_steps=0,

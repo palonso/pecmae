@@ -51,13 +51,13 @@ def main(query: str, filter: str, limit: int, offset: int, wildcard: str, market
     # get countries names
     countries_dict = get_alpha2_code_to_name_dict()
 
-    for market in markets:
-
+    def single_market_query(market):
         print("Executing a query!")
         results = search_query(sp, query, limit=limit, offset=offset, market=market)
         print("Got some results!")
         if results["tracks"]["total"]:
-            print(colored(f"At {countries_dict[market]} ({market}) market", "cyan"))
+            if market:
+                print(colored(f"At {countries_dict[market]} ({market}) market", "cyan"))
             for n, track in enumerate(results["tracks"]["items"]):
                 print(
                     f"{n}: {track['artists'][0]['name']} - {track['name']} - {track['id']}"
@@ -65,6 +65,12 @@ def main(query: str, filter: str, limit: int, offset: int, wildcard: str, market
                 )
         else:
             print(f"{market}: {results['tracks']['total']} songs")
+
+    if markets:
+        for market in markets:
+            single_market_query(market)
+    else:
+        single_market_query(market)
 
 
 def get_available_query_filters_list():

@@ -66,3 +66,10 @@ We implemented various scripts to gather Spotify metadata and previews based in 
   ```
 
 Wildcard: a character used to get a list of song ids which include it in the song title or artist name.
+
+
+# Building the genre dataset
+- Set your SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET, SPOTIPY_REDIRECT_URI environment variables.
+- Create a text file with a list of genres (one line per genre string) (see `test_genre_list` as an example)
+- `cd src`
+- Run search queries to search for tracks by each genre `./query_genre_spotifyids.sh ../test_genre_list | grep "preview: True"`.

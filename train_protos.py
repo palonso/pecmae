@@ -44,6 +44,7 @@ class ZinemaNet(L.LightningModule):
         max_lr: float = 1e-3,
         temp: float = 0.1,
         alpha: float = 0.5,
+        proto_loss_type: str = "any_sample",
     ):
         super().__init__()
 
@@ -57,6 +58,7 @@ class ZinemaNet(L.LightningModule):
         self.max_lr = max_lr
         self.temp = temp
         self.alpha = alpha
+        self.proto_loss_type = proto_loss_type
 
         self.n_protos = self.protos_weights.shape[0]
         self.n_protos_per_label = self.n_protos // self.n_labels
@@ -109,7 +111,20 @@ class ZinemaNet(L.LightningModule):
         # classification loss
         loss_c = self.xent(y_hat / self.temp, y)
         # prototype loss
-        loss_p = torch.mean(torch.min(distance, dim=0).values)
+
+        if self.proto_loss_type == "any_sample":
+            loss_p = torch.mean(torch.min(distance, dim=0).values)
+
+        elif self.proto_loss_type == "class_samples":
+            indices = torch.argsort(distance, axis=0)
+            distance_mask = torch.inf * torch.ones_like(indices)
+            for i in range(len(distance_mask)):
+                distance_mask[i, y[i]] = distance[i, y[i]]
+
+            min_dis = torch.min(distance_mask, axis=0).values
+            min_dis_clean = min_dis[torch.where(min_dis != torch.inf)]
+
+            loss_p = torch.mean(min_dis_clean)
 
         loss = self.alpha * loss_p + (1 - self.alpha) * loss_c
 
@@ -287,6 +302,7 @@ def train(
     proto_file: Path = None,
     temp: float = 0.1,
     alpha: float = 0.5,
+    proto_loss_type: str = "any_sample",
 ):
     hyperparams = locals()
 
@@ -372,6 +388,7 @@ def train(
         temp=temp,
         alpha=alpha,
         max_lr=max_lr,
+        proto_loss_type=proto_loss_type,
     )
 
     logger = TensorBoardLogger(
@@ -433,6 +450,14 @@ if __name__ == "__main__":
     parser.add_argument("--gpu-id", type=int, default=0)
     parser.add_argument("--temp", type=float, default=0.1)
     parser.add_argument("--alpha", type=float, default=0.7)
+    parser.add_argument(
+        "--proto-loss-type",
+        default="any_sample",
+        choices=[
+            "any_sample",
+            "class_samples",
+        ],
+    )
 
     args = parser.parse_args()
     train(
@@ -448,6 +473,8 @@ if __name__ == "__main__":
         val_test_ratio=args.val_test_ratio,
         timestamps=args.timestamps,
         trim_mode=args.trim_mode,
+        gpu_id=args.gpu_id,
         temp=args.temp,
         alpha=args.alpha,
+        proto_loss_type=args.proto_loss_type,
     )

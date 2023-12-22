@@ -58,7 +58,7 @@ class ZinemaNet(L.LightningModule):
         self.temp = temp
         self.alpha = alpha
 
-        self.n_protos = self.protos.shape[0]
+        self.n_protos = self.protos_weights.shape[0]
         self.n_protos_per_label = self.n_protos // self.n_labels
 
         self.protos = nn.Parameter(

@@ -31,12 +31,14 @@ def remove_accents(input_str):
 
 def remove_symbols(input_str):
     # Using a regular expression to remove symbols
-    return re.sub(r'[^\w\s]', '', input_str)
+    if "-" in input_str: 
+        print(input_str)
+    return re.sub(r'[^\w\s]', ' ', input_str)
 
 ############################################################
 # Path to input YAML files
-list1_path = 'shared-genres_list_D400-AM-EveryNoise.yaml'
-list2_path = 'wiki-popular-2023.yaml'
+list1_path = 'discogs-effnet-400.yaml'
+list2_path = 'allmusic-genres-2017.yaml'
 ############################################################
 
 # Load data from YAML files
@@ -57,5 +59,5 @@ shared_elements  = [element for element in processed_list_1 if element in proces
 print("Shared elements:", len(shared_elements))
 
 # Store the shared elements 
-with open('shared-genres_list_D400-AM-EveryNoise-Wiki.yaml', 'w') as yaml_file: 
-    yaml.dump({'Common Genres D400 & AM & EveryNoise & Wikipedia': shared_elements}, yaml_file,  default_flow_style=False)
+with open('shared-genres_list_D400-AM-2.yaml', 'w') as yaml_file: 
+    yaml.dump({'Common Genres D400 & AM': shared_elements}, yaml_file,  default_flow_style=False)

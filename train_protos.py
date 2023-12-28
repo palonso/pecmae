@@ -1,6 +1,7 @@
 import pickle as pk
 from argparse import ArgumentParser
-from datetime import datetime
+
+# from datetime import datetime
 from pathlib import Path
 
 import pytorch_lightning as L
@@ -31,6 +32,72 @@ def dataset_generator(metadata_file: Path, data_dir: Path):
         }
 
 
+lambd = 1.0
+
+
+class GradReverse(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        return x.view_as(x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        global lambd
+        # return grad_output.neg()
+        return grad_output * -lambd
+
+
+def grad_reverse(x):
+    return GradReverse.apply(x)
+
+
+class domain_classifier_mlp(nn.Module):
+    def __init__(self, input_dim=1200):
+        super(domain_classifier_mlp, self).__init__()
+        self.fc1 = nn.Linear(input_dim, 100)
+        self.leaky_relu = nn.LeakyReLU()
+        self.fc2 = nn.Linear(100, 1)
+        self.drop = nn.Dropout1d(0.25)
+
+    def forward(self, x):
+        x = grad_reverse(x)
+        x = self.leaky_relu(self.drop(self.fc1(x)))
+        x = self.fc2(x)
+        return x
+
+
+class domain_classifier_conv(nn.Module):
+    def __init__(self):
+        super(domain_classifier_conv, self).__init__()
+
+        self.cv1 = torch.nn.Conv2d(1, 16, 5)
+        self.mp1 = torch.nn.MaxPool2d(2)
+        self.cv2 = torch.nn.Conv2d(16, 16, 5)
+        self.mp2 = torch.nn.MaxPool2d(2)
+        self.cv3 = torch.nn.Conv2d(16, 32, 5)
+        self.mp3 = torch.nn.MaxPool2d(4)
+        self.cv4 = torch.nn.Conv2d(32, 32, 5)
+        self.mp4 = torch.nn.MaxPool2d(4)
+        self.ln1 = torch.nn.Linear(960, 1)
+
+        self.leaky_relu = nn.LeakyReLU()
+        self.drop = nn.Dropout1d(0.25)
+
+    def forward(self, x):
+        x = x.unsqueeze(1)
+        x = grad_reverse(x)
+
+        x = self.leaky_relu(self.mp1(self.cv1(x)))
+        x = self.leaky_relu(self.mp2(self.cv2(x)))
+        x = self.leaky_relu(self.mp3(self.cv3(x)))
+        x = self.leaky_relu(self.mp4(self.cv4(x)))
+        x = x.flatten(1)
+
+        x = self.leaky_relu(self.drop(self.ln1(x)))
+
+        return x
+
+
 class ZinemaNet(L.LightningModule):
     def __init__(
         self,
@@ -44,7 +111,11 @@ class ZinemaNet(L.LightningModule):
         max_lr: float = 1e-3,
         temp: float = 0.1,
         alpha: float = 0.5,
-        proto_loss_type: str = "any_sample",
+        proto_loss: str = "l2",
+        proto_loss_samples: str = "any_sample",
+        use_discriminator: bool = False,
+        discriminator_type: str = "mlp",
+        distance: str = "l2",
     ):
         super().__init__()
 
@@ -58,7 +129,12 @@ class ZinemaNet(L.LightningModule):
         self.max_lr = max_lr
         self.temp = temp
         self.alpha = alpha
-        self.proto_loss_type = proto_loss_type
+        self.proto_loss = proto_loss
+        self.proto_loss_samples = proto_loss_samples
+        self.use_discriminator = use_discriminator
+        self.discriminator_type = discriminator_type
+        self.distance = distance
+        self.save_protos_each_n_steps = 5000
 
         self.n_protos = self.protos_weights.shape[0]
         self.n_protos_per_label = self.n_protos // self.n_labels
@@ -66,7 +142,7 @@ class ZinemaNet(L.LightningModule):
         self.protos = nn.Parameter(
             data=torch.tensor(self.protos_weights), requires_grad=True
         )
-        self.linear = torch.nn.Linear(self.n_protos, self.n_labels)
+        self.linear = nn.Linear(self.n_protos, self.n_labels)
 
         # init linear weights to direct connection to the class
         lin_weights = np.hstack(
@@ -85,8 +161,26 @@ class ZinemaNet(L.LightningModule):
             num_classes=n_labels,
         )
 
+        if self.use_discriminator:
+            if self.discriminator_type == "conv":
+                self.discriminator = domain_classifier_conv()
+
+            elif self.discriminator_type == "mlp":
+                self.discriminator = domain_classifier_mlp(
+                    input_dim=self.time_dim * self.feat_dim
+                )
+            else:
+                raise ValueError(
+                    f"discriminator type {self.discriminator_type} not supported"
+                )
+
+            self.bxent = nn.BCEWithLogitsLoss()
+            self.accuracy_binary = torchmetrics.classification.Accuracy(task="binary")
+
         # to use the scheduler
         self.automatic_optimization = False
+
+        self.i = 0
 
     def training_step(self, batch, batch_idx, split="train"):
         x = batch["feature"]
@@ -96,13 +190,33 @@ class ZinemaNet(L.LightningModule):
         x = x.flatten(1, 2)
         protos = self.protos.flatten(1, 2)
 
+        optimizers = self.optimizers()
+        lr_schedulers = self.lr_schedulers()
+
+        if self.use_discriminator:
+            optimizer_c = optimizers[0]
+            lr_scheduler_c = lr_schedulers[0]
+
+            optimizer_d = optimizers[1]
+            lr_scheduler_d = lr_schedulers[1]
+        else:
+            optimizer_c = optimizers
+            lr_scheduler_c = lr_schedulers
+
         if split == "train":
-            optimizer = self.optimizers()
-            optimizer.zero_grad()
+            optimizer_c.zero_grad()
 
         similarity = self.info_nce(x, protos, output="logits")
 
-        distance = torch.exp(-similarity)
+        if self.proto_loss == "info_nce":
+            distance = torch.exp(-similarity)
+        elif self.proto_loss == "l1":
+            distance = torch.mean(torch.abs((x.unsqueeze(1) - protos.unsqueeze(0))), -1)
+        elif self.proto_loss == "l2":
+            distance = torch.mean((x.unsqueeze(1) - protos.unsqueeze(0)) ** 2, -1)
+        else:
+            raise ValueError(f"distance {self.proto_loss} not supported")
+
         self.log(f"{split}_distance", distance.mean())
 
         y_hat = self.linear(similarity)
@@ -112,10 +226,10 @@ class ZinemaNet(L.LightningModule):
         loss_c = self.xent(y_hat / self.temp, y)
         # prototype loss
 
-        if self.proto_loss_type == "any_sample":
+        if self.proto_loss_samples == "all":
             loss_p = torch.mean(torch.min(distance, dim=0).values)
 
-        elif self.proto_loss_type == "class_samples":
+        elif self.proto_loss_samples == "class":
             indices = torch.argsort(distance, axis=0)
             distance_mask = torch.inf * torch.ones_like(indices)
             for i in range(len(distance_mask)):
@@ -130,18 +244,60 @@ class ZinemaNet(L.LightningModule):
 
         if split == "train":
             self.manual_backward(loss)
-            optimizer.step()
+            optimizer_c.step()
 
-            scheduler = self.lr_schedulers()
-            scheduler.step()
-            self.log(f"{split}_lr", scheduler.get_last_lr()[0])
+            lr_scheduler_c.step()
+            self.log(f"{split}_lr_class", lr_scheduler_c.get_last_lr()[0])
 
-        self.log(f"{split}_loss", loss, prog_bar=True)
         self.log(f"{split}_acc", acc, prog_bar=True)
-        self.log(f"{split}_proto_loss", loss_p)
         self.log(f"{split}_class_loss", loss_c)
+        self.log(f"{split}_proto_loss", loss_p)
 
-        return loss
+        if self.use_discriminator:
+            optimizer_d.zero_grad()
+
+            p = float(self.i) / self.total_steps
+            global lambd
+
+            lambd = 2.0 / (1.0 + np.exp(-10.0 * p)) - 1
+
+            x_disc = torch.cat([x, protos], dim=0)
+            y_disc = torch.cat(
+                [
+                    torch.zeros(len(y), device=self.device),
+                    torch.ones(self.n_protos, device=self.device),
+                ],
+                dim=0,
+            )
+            y_disc = y_disc.unsqueeze(1)
+
+            if self.discriminator_type == "conv":
+                y_disc_hat = self.discriminator(
+                    x_disc.reshape(-1, self.time_dim, self.feat_dim)
+                )
+            else:
+                y_disc_hat = self.discriminator(x_disc)
+
+            loss_d = self.bxent(y_disc_hat, y_disc)
+            acc_disc = self.accuracy_binary(y_disc_hat, y_disc)
+
+            self.log(f"{split}_disc_acc", acc_disc)
+
+            if split == "train":
+                self.log("lambda", lambd)
+                self.manual_backward(loss_d)
+                optimizer_d.step()
+
+                lr_scheduler_d.step()
+                self.log(f"{split}_lr_disc", lr_scheduler_d.get_last_lr()[0])
+
+            self.log(f"{split}_disc_loss", loss_d)
+
+        if split == "train":
+            if self.i % self.save_protos_each_n_steps == 0 and self.i != 0:
+                self.save_checkpoint()
+
+        self.i += 1
 
     def validation_step(self, batch, batch_idx):
         self.training_step(batch, batch_idx, split="val")
@@ -150,21 +306,52 @@ class ZinemaNet(L.LightningModule):
         self.training_step(batch, batch_idx, split="test")
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(
+        optimizer_c = optim.Adam(
             self.parameters(),
             weight_decay=self.weight_decay,
         )
-        scheduler = optim.lr_scheduler.OneCycleLR(
-            optimizer,
+        scheduler_c = optim.lr_scheduler.OneCycleLR(
+            optimizer_c,
             max_lr=self.max_lr,
             total_steps=self.total_steps,
         )
-        return {"optimizer": optimizer, "lr_scheduler": scheduler}
+        optimizers = [
+            {"optimizer": optimizer_c, "lr_scheduler": scheduler_c},
+        ]
+
+        if self.use_discriminator:
+            optimizer_d = optim.Adam(
+                self.parameters(),
+                weight_decay=self.weight_decay,
+            )
+            scheduler_d = optim.lr_scheduler.OneCycleLR(
+                optimizer_d,
+                max_lr=self.max_lr,
+                total_steps=self.total_steps,
+            )
+            optimizers.append(
+                {"optimizer": optimizer_d, "lr_scheduler": scheduler_d},
+            )
+
+        return optimizers
+
+    def save_checkpoint(self):
+        protos = self.protos.detach().cpu().numpy()
+
+        out_data_dir = Path("out_data/")
+        out_data_dir.mkdir(exist_ok=True)
+
+        protos_file = out_data_dir / f"protos_v{self.logger.version}_s{self.i}.npy"
+        print(f"saving protos to {protos_file}")
+
+        np.save(protos_file, protos)
 
 
 def trim_embeddings(examples: list, timestamps: int = 300, mode: str = "middle"):
     features = []
-    for feature in examples["feature"]:
+    labels = []
+
+    for feature, label in zip(examples["feature"], examples["label"]):
         feature = np.array(feature).squeeze()
 
         if mode == "middle":
@@ -175,9 +362,23 @@ def trim_embeddings(examples: list, timestamps: int = 300, mode: str = "middle")
             feature = feature[start : start + timestamps, :]
         elif mode == "beggining":
             feature = feature[:timestamps, :]
+        elif mode == "all":
+            n_chunks = feature.shape[0] // timestamps
+            feature = feature[: n_chunks * timestamps, :].reshape(
+                -1, timestamps, feature.shape[-1]
+            )
+            labels.extend([label] * n_chunks)
         else:
             raise ValueError(f"mode {mode} not supported")
+
         features.append(feature)
+
+    if mode == "all":
+        if len(features) == 1:
+            features = features[0].tolist()
+        else:
+            features = np.vstack(features).tolist()
+        examples["label"] = labels
 
     examples["feature"] = features
     return examples
@@ -302,13 +503,17 @@ def train(
     proto_file: Path = None,
     temp: float = 0.1,
     alpha: float = 0.5,
-    proto_loss_type: str = "any_sample",
+    proto_loss: str = "l2",
+    proto_loss_samples: str = "class",
+    use_discriminator: bool = False,
+    discriminator_type: str = "mlp",
 ):
     hyperparams = locals()
 
     print("creating dataset")
     ds = Dataset.from_generator(
         dataset_generator,
+        writer_batch_size=500,
         gen_kwargs={
             "metadata_file": metadata_file,
             "data_dir": data_dir,
@@ -388,7 +593,10 @@ def train(
         temp=temp,
         alpha=alpha,
         max_lr=max_lr,
-        proto_loss_type=proto_loss_type,
+        proto_loss=proto_loss,
+        proto_loss_samples=proto_loss_samples,
+        use_discriminator=use_discriminator,
+        discriminator_type=discriminator_type,
     )
 
     logger = TensorBoardLogger(
@@ -417,11 +625,14 @@ def train(
     lin_weights = model.linear.weight.detach().cpu().numpy()
     protos = model.protos.detach().cpu().numpy()
 
-    current_timestamp = datetime.now()
-    formatted_timestamp = current_timestamp.strftime("%y%m%d_%H%M%S")
+    # current_timestamp = datetime.now()
+    # formatted_timestamp = current_timestamp.strftime("%y%m%d_%H%M%S")
 
-    np.save(f"lin_weights_{formatted_timestamp}.npy", lin_weights)
-    np.save(f"protos_{formatted_timestamp}.npy", protos)
+    out_data_dir = Path("out_data")
+    out_data_dir.mkdir(exist_ok=True)
+
+    np.save(out_data_dir / f"lin_weights_v{logger.version}.npy", lin_weights)
+    np.save(out_data_dir / f"protos_v{logger.version}.npy", protos)
 
 
 if __name__ == "__main__":
@@ -431,12 +642,7 @@ if __name__ == "__main__":
     parser.add_argument("--metadata-file", type=Path, required=True)
     parser.add_argument(
         "--protos-init",
-        choices=[
-            "random",
-            "kmeans-centers",
-            "kmeans-samples",
-            "proto-file",
-        ],
+        choices=["random", "kmeans-centers", "kmeans-samples", "proto-file"],
     )
     parser.add_argument("--n-protos-per-label", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=32)
@@ -450,14 +656,10 @@ if __name__ == "__main__":
     parser.add_argument("--gpu-id", type=int, default=0)
     parser.add_argument("--temp", type=float, default=0.1)
     parser.add_argument("--alpha", type=float, default=0.7)
-    parser.add_argument(
-        "--proto-loss-type",
-        default="any_sample",
-        choices=[
-            "any_sample",
-            "class_samples",
-        ],
-    )
+    parser.add_argument("--proto-loss", default="l2", choices=["l1", "l2", "info_nce"])
+    parser.add_argument("--proto-loss-samples", default="all", choices=["all", "class"])
+    parser.add_argument("--use-discriminator", action="store_true"),
+    parser.add_argument("--discriminator-type", default="mlp", choices=["mlp", "conv"])
 
     args = parser.parse_args()
     train(
@@ -476,5 +678,8 @@ if __name__ == "__main__":
         gpu_id=args.gpu_id,
         temp=args.temp,
         alpha=args.alpha,
-        proto_loss_type=args.proto_loss_type,
+        proto_loss_samples=args.proto_loss_samples,
+        proto_loss=args.proto_loss,
+        use_discriminator=args.use_discriminator,
+        discriminator_type=args.discriminator_type,
     )

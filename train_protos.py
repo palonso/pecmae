@@ -507,6 +507,7 @@ def train(
     proto_loss_samples: str = "class",
     use_discriminator: bool = False,
     discriminator_type: str = "mlp",
+    checkpoint: Path = None,
 ):
     hyperparams = locals()
 
@@ -583,21 +584,40 @@ def train(
         # num_workers=10,
     )
 
-    model = ZinemaNet(
-        protos,
-        time_dim=time_dim,
-        feat_dim=feat_dim,
-        n_labels=n_labels,
-        batch_size=batch_size,
-        total_steps=len(loader_train) * epochs,
-        temp=temp,
-        alpha=alpha,
-        max_lr=max_lr,
-        proto_loss=proto_loss,
-        proto_loss_samples=proto_loss_samples,
-        use_discriminator=use_discriminator,
-        discriminator_type=discriminator_type,
-    )
+    if checkpoint is not None:
+        print(f"loading checkpoint from {checkpoint}")
+        model = ZinemaNet.load_from_checkpoint(
+            checkpoint,
+            protos=protos,
+            time_dim=time_dim,
+            feat_dim=feat_dim,
+            n_labels=n_labels,
+            batch_size=batch_size,
+            total_steps=len(loader_train) * epochs,
+            temp=temp,
+            alpha=alpha,
+            max_lr=max_lr,
+            proto_loss=proto_loss,
+            proto_loss_samples=proto_loss_samples,
+            use_discriminator=use_discriminator,
+            discriminator_type=discriminator_type,
+        )
+    else:
+        model = ZinemaNet(
+            protos,
+            time_dim=time_dim,
+            feat_dim=feat_dim,
+            n_labels=n_labels,
+            batch_size=batch_size,
+            total_steps=len(loader_train) * epochs,
+            temp=temp,
+            alpha=alpha,
+            max_lr=max_lr,
+            proto_loss=proto_loss,
+            proto_loss_samples=proto_loss_samples,
+            use_discriminator=use_discriminator,
+            discriminator_type=discriminator_type,
+        )
 
     logger = TensorBoardLogger(
         "tb_logs",
@@ -660,6 +680,7 @@ if __name__ == "__main__":
     parser.add_argument("--proto-loss-samples", default="all", choices=["all", "class"])
     parser.add_argument("--use-discriminator", action="store_true"),
     parser.add_argument("--discriminator-type", default="mlp", choices=["mlp", "conv"])
+    parser.add_argument("--checkpoint", type=Path, default=None)
 
     args = parser.parse_args()
     train(
@@ -682,4 +703,5 @@ if __name__ == "__main__":
         proto_loss=args.proto_loss,
         use_discriminator=args.use_discriminator,
         discriminator_type=args.discriminator_type,
+        checkpoint=args.checkpoint,
     )

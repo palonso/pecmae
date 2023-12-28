@@ -68,6 +68,15 @@ We implemented various scripts to gather Spotify metadata and previews based in 
 Wildcard: a character used to get a list of song ids which include it in the song title or artist name.
 
 
+# Spotify API rate limits
+
+https://developer.spotify.com/documentation/web-api/concepts/rate-limits
+
+Spotify's API rate limit is calculated based on the number of calls that your app makes to Spotify in a rolling 30 second window. If your app exceeds the rate limit for your app then you'll begin to see 429 error responses from Spotify's Web API, and you may hear from users about unexpected behavior that they have noticed while using your app. The limit varies depending on whether your app is in development mode or extended quota mode.
+
+The header of the 429 response will normally include a Retry-After header with a value in seconds. Consider waiting for the number of seconds specified in Retry-After before your app calls the Web API again.
+
+
 # Building the genre dataset
 - Set your SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET, SPOTIPY_REDIRECT_URI environment variables.
 - Create a text file with a list of genres (one line per genre string) (see `test_genre_list` as an example)

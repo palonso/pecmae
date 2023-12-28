@@ -59,10 +59,12 @@ def main(query: str, filter: str, limit: int, offset: int, wildcard: str, market
             if market:
                 print(colored(f"At {countries_dict[market]} ({market}) market", "cyan"))
             for n, track in enumerate(results["tracks"]["items"]):
-                print(
-                    f"{n}: {track['artists'][0]['name']} - {track['name']} - {track['id']}"
-                    f" - preview: {check_preview(track)} - analysis: {analysis_exists(sp, track['id'])}",
-                )
+                if check_preview(track) and analysis_exists(sp, track['id']):
+                    print(f"{query}\t{track['id']}\t{track['artists'][0]['name']}\t{track['name']}")
+                #print(
+                #    f"{n}: {track['artists'][0]['name']} - {track['name']} - {track['id']}"
+                #    f" - preview: {check_preview(track)} - analysis: {analysis_exists(sp, track['id'])}",
+                #)
         else:
             print(f"{market}: {results['tracks']['total']} songs")
 

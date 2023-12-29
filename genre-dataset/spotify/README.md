@@ -76,9 +76,3 @@ Spotify's API rate limit is calculated based on the number of calls that your ap
 
 The header of the 429 response will normally include a Retry-After header with a value in seconds. Consider waiting for the number of seconds specified in Retry-After before your app calls the Web API again.
 
-
-# Building the genre dataset
-- Set your SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET, SPOTIPY_REDIRECT_URI environment variables.
-- Create a text file with a list of genres (one line per genre string) (see `test_genre_list` as an example)
-- `cd src`
-- Run search queries to search for tracks by each genre `./query_genre_spotifyids.sh ../test_genre_list | grep "preview: True"`.

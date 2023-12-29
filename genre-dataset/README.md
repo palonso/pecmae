@@ -7,6 +7,13 @@ Discogs genres are taken from Discogs-Youtube dataset. They were parsed from the
 
 Wikipedia genres are semi-manually parsed from https://en.wikipedia.org/wiki/List_of_music_genres_and_styles. Only "Popular" category (popular music) is used for simplicity.
 
+# Genre prototypes
+
+`selected-genres.yaml` contains the list of preselected genres (common genres, present both in Discogs 400 styles and AllMusic).
+
+We use tracks listed in the "Song Highlights" for each genre on AllMusic as prototypes ([example](https://www.allmusic.com/style/ambient-ma0000002571/songs)).
+
+
 # Creating the genre dataset with Spotify API
 - `selected-genres.yaml` contains a list of genres preselected for building the dataset.
 - Create `selected-genres` file (each line string is a genre, see `src/test_genre_list` for an example) from `selected-genres.yaml`.

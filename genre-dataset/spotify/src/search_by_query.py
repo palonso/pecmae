@@ -56,20 +56,25 @@ def main(query: str, filter: str, limit: int, offset: int, wildcard: str, market
         print("Executing a query!")
         results = search_query(sp, query, limit=limit, offset=offset, market=market)
         print("Got some results!")
+        tracks = []
         if results["tracks"]["total"]:
             if market:
                 print(colored(f"At {countries_dict[market]} ({market}) market", "cyan"))
             for n, track in enumerate(results["tracks"]["items"]):
                 if track is not None and check_preview(track): #and analysis_exists(sp, track['id']):
                     print(f"{query}\t{track['id']}\t{track['artists'][0]['name']}\t{track['name']}")
+                    tracks.append((track['artists'][0]['name'], track['name'], track['id']))
         else:
             print(f"{market}: {results['tracks']['total']} songs")
+        return tracks
 
     if markets:
+        tracks = []
         for market in markets:
-            single_market_query(market)
+            tracks += single_market_query(market)
+        return tracks
     else:
-        single_market_query(market)
+        return single_market_query(market)
 
 
 def get_available_query_filters_list():

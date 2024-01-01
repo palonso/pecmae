@@ -15,6 +15,10 @@ TEST_ARTIST_IDS = [
     "36QJpDe2go2KgaRleHCDTp",
 ]
 
+# Sleep time in seconds to avoid API rate limiting.
+SLEEP_TIME = 5
+
+
 from utils.utils import read_yaml, write_yaml
 from utils.spotify import fetch_analysis, fetch_features, get_spotify_client
 
@@ -40,6 +44,7 @@ def download_preview(url: str, out_path: Path, bar: bool = False) -> None:
     except Exception as e:
         print(e)
         success = False
+    time.sleep(SLEEP_TIME)
     return success
 
 

@@ -35,7 +35,7 @@ def display_reports(
     print(f"\tfailed: {failed}/{n_ids} ({percentage(failed, n_ids)}%)")
 
 
-def download_preview(url: str, out_path: Path, bar: bool = False) -> None:
+def fetch_preview(url: str, out_path: Path, bar: bool = False) -> None:
     bar = wget.bar_adaptive if bar else bar
     success = True
     try:
@@ -242,7 +242,7 @@ def main(
                             failed["data"] += 1
 
                     if download_preview:
-                        audio_success = download_preview(track["preview_url"], audio_path)
+                        audio_success = fetch_preview(track["preview_url"], audio_path)
                         if audio_success:
                             successed["audio"] += 1
                         else:

@@ -11,6 +11,6 @@ while IFS=$'\t' read -r genre spotifyid artist track; do
     if [ ! -d "$2/$genre" ]; then
         mkdir "$2/$genre"
     fi
-    python3 fetch_tracks.py -t $spotifyid -o $2/$genre -u --skip_annotations
+    python3 fetch_tracks.py -t $spotifyid -o "$2/$genre" -u --skip_annotations
 done < "$SPOTIFYIDS_TSV"
 

@@ -181,8 +181,8 @@ def main(
         output_dir, force, annotation_subfolder, audio_subfolder
     )
 
-    print(f"audio_dir: {base_audio_dir}")
-    print(f"annotation_dir: {base_annotation_dir}")
+    #print(f"audio_dir: {base_audio_dir}")
+    #print(f"annotation_dir: {base_annotation_dir}")
 
     if input_yaml:
         yaml_data = read_yaml(input_yaml)
@@ -194,82 +194,84 @@ def main(
     successed, failed, existing = ({"audio": 0, "data": 0} for i in range(3))
 
     for n in range(offset, n_track_ids):
-
         try:
-            track = client.track(track_ids[n])
-            track_info(f"{n}/{n_track_ids}", track)
+            download_meta = not skip_annotations
+            download_preview = not skip_preview
+            filename = track_ids[n] if use_id_as_name else f"{n}"
+            if download_meta:
+                if two_char_ids_folder:
+                    annotation_dir = get_dir_with_two_char_id_folder(
+                        base_annotation_dir, track_ids[n]
+                    )
+                else:
+                    annotation_dir = base_annotation_dir
+                annotation_path = annotation_dir / f"{filename}.yaml"
+                if annotation_path.is_file() and annotation_path.exists():
+                    print(
+                        f"Skip downloading: analysis already exists {annotation_path}"
+                    )
+                    existing["data"] += 1
+                    download_meta = False
 
-            # check if preview_url is not null, other wise skip song and update index
-            if track["preview_url"]:
-                filename = track_ids[n] if use_id_as_name else f"{n}"
-                if not skip_annotations:
-                    if two_char_ids_folder:
-                        annotation_dir = get_dir_with_two_char_id_folder(
-                            base_annotation_dir, track_ids[n]
-                        )
-                    else:
-                        annotation_dir = base_annotation_dir
+            if download_preview:
+                if two_char_ids_folder:
+                    audio_dir = get_dir_with_two_char_id_folder(
+                        base_audio_dir, track_ids[n]
+                    )
+                else:
+                    audio_dir = base_audio_dir
+                audio_path = audio_dir / f"{filename}.mp3"
+                if audio_path.is_file() and audio_path.exists():
+                    print(
+                        f"Skip downloading: preview already exists in {audio_path}"
+                    )
+                    existing["audio"] += 1
+                    download_preview = False
 
-                    annotation_path = annotation_dir / f"{filename}.yaml"
-                    if annotation_path.is_file() and annotation_path.exists():
-                        print(
-                            f"Skip downloading: analysis already exists {annotation_path}"
-                        )
-                        existing["data"] += 1
-                    else:
-                        analysis_success = fetch_data(
-                            client, track, annotation_path
-                        )
+            if download_meta or download_preview:
+                track = client.track(track_ids[n])
+                track_info(f"{n}/{n_track_ids}", track)
+
+                # Skip both preview and metadata if preview_url is null
+                if track['preview_url']:
+                    if download_meta:
+                        analysis_success = fetch_data(client, track, annotation_path)
                         if analysis_success:
                             successed["data"] += 1
                         else:
                             failed["data"] += 1
-                if not skip_preview:
-                    if two_char_ids_folder:
-                        audio_dir = get_dir_with_two_char_id_folder(
-                            base_audio_dir, track_ids[n]
-                        )
-                    else:
-                        audio_dir = base_audio_dir
 
-                    audio_path = audio_dir / f"{filename}.mp3"
-                    if audio_path.is_file() and audio_path.exists():
-                        print(
-                            f"Skip downloading: preview already exists in {audio_path}"
-                        )
-                        existing["audio"] += 1
-                    else:
-                        audio_success = download_preview(
-                            track["preview_url"], audio_path
-                        )
+                    if download_preview:
+                        audio_success = download_preview(track["preview_url"], audio_path)
                         if audio_success:
                             successed["audio"] += 1
                         else:
                             failed["audio"] += 1
-            else:
-                print(
-                    colored(
-                        f"Skip track: {track_ids[n]} has not audio preview available.",
-                        "red",
+                else:
+                    print(
+                        colored(
+                            f"Skip track: {track_ids[n]} has not audio preview available.",
+                            "red",
+                        )
                     )
-                )
-                failed["audio"] += 1
-                failed["data"] += 1
+                    failed["audio"] += 1
+                    failed["data"] += 1
+
         except TimeoutError as te:
             print(f"TimeoutError in {track_ids[n]}: {te}")
 
         # TODO: provide a report with how many tracks were fetch and how much have annotation and how much have audio
-    print(f"Execution time: {round(time.time() - start_time, 2)}[s]")
+    #print(f"Execution time: {round(time.time() - start_time, 2)}[s]")
 
-    print(f"Previews report:")
-    display_reports(
-        n_track_ids, existing["audio"], successed["audio"], failed["audio"]
-    )
+    #print(f"Previews report:")
+    #display_reports(
+    #    n_track_ids, existing["audio"], successed["audio"], failed["audio"]
+    #)
 
-    print(f"Analysis report:")
-    display_reports(
-        n_track_ids, existing["data"], successed["data"], failed["data"]
-    )
+    #print(f"Analysis report:")
+    #display_reports(
+    #    n_track_ids, existing["data"], successed["data"], failed["data"]
+    #)
     return existing, successed, failed
 
 

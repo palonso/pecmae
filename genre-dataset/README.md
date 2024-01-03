@@ -15,8 +15,8 @@ We use tracks listed in the "Song Highlights" for each genre on AllMusic as prot
 
 
 # Creating the genre dataset with Spotify API
-- `selected-genres.yaml` contains a list of genres preselected for building the dataset.
-- Create `selected-genres` file (each line string is a genre, see `src/test_genre_list` for an example) from `selected-genres.yaml`.
+- The file `selected-genres.yaml` contains a list of genres preselected for building the dataset.
+- Create `selected-genres` file (line-delimited strings, each line string is a genre, see `src/test_genre_list` for an example) from `selected-genres.yaml`.
 - Register an application in the Spotify API dashboard: https://developer.spotify.com/dashboard.
 - Set your `SPOTIPY_CLIENT_ID`, `SPOTIPY_CLIENT_SECRET`, `SPOTIPY_REDIRECT_URI` environment variables.
 - `cd spotify/src`
@@ -29,4 +29,25 @@ We use tracks listed in the "Song Highlights" for each genre on AllMusic as prot
     ```
     mkdir ../../spotify-audio
     ./download_spotifyids.sh ../../selected-genres.spotifyapi.clean.tsv ../../spotify-audio
+    ```
+
+- Search genre prototypes on Spotify API. If there is no candidate track with exact string match for artist name and title, the script asks to manually select the correct match. The script appends results to the `../../prototypes-AM-selected-genres.yaml.spotifyapi.tsv` file (FIXME filenames are hardcoded):
+    ```
+    python3 search_prototypes.py
+
+    ```
+
+- Number of prototypes successfully matched Spotify API metadata:
+    ```
+    cat ../../prototypes-AM-selected-genres.yaml.spotifyapi.tsv | grep  -v "NO MATCH" | wc -l
+    ```
+
+- Download previews for matched genre prototypes:
+    ```
+    ./download_spotifyids_prototypes.sh ../../prototypes-AM-selected-genres.yaml.spotifyapi.tsv ../../spotify-prototypes
+    ```
+
+- Stats for the downloaded prototypes:
+    ```
+     find ../../spotify-prototypes/ -name "*.mp3" | sed 's/.*prototypes\///g' | sed 's/\/audio.*//' | uniq -c
     ```

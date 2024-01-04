@@ -55,6 +55,7 @@ Retrieve prototypes for each genre:
 - Download previews for matched genre prototypes:
     ```
     mkdir ../../spotify-prototypes
+    cat ../../prototypes-AM-selected-genres.yaml.tsv.spotifyapi.tsv | grep -v "NO MATCH" > prototypes-AM-selected-genres.yaml.tsv.spotifyapi.tsv.matched
     ./download_spotifyids_prototypes.sh ../../prototypes-AM-selected-genres.yaml.tsv.spotifyapi.tsv ../../spotify-prototypes
     ```
 - Stats for the downloaded prototypes:

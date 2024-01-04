@@ -1,10 +1,18 @@
+import argparse
 import time
 import yaml
 import click
 from search_by_query import main as search
 
-FILE_PROTOTYPES = "../../prototypes-AM-selected-genres.yaml"
-FILE_MATCHES = "../../prototypes-AM-selected-genres.yaml.spotifyapi.tsv"
+# FILE_PROTOTYPES = "../../prototypes-AM-selected-genres.yaml"
+# FILE_MATCHES = "../../prototypes-AM-selected-genres.yaml.spotifyapi.tsv"
+
+parser = argparse.ArgumentParser(description='Search genre prototypes on Spotify API')
+parser.add_argument('file_prototypes', type=str, help='Input YAML file with per-genre prototypes lists')
+parser.add_argument('file_matches', type=str, help='Output TSV file with search results from Spotify API')
+args = parser.parse_args()
+FILE_PROTOTYPES = args.file_prototypes
+FILE_MATCHES = args.file_matches
 
 
 def select_candidate(candidate_tracks):

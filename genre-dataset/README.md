@@ -30,23 +30,24 @@ We use tracks listed in the "Song Highlights" for each genre on AllMusic as prot
     mkdir ../../spotify-audio
     ./download_spotifyids.sh ../../selected-genres.spotifyapi.clean.tsv ../../spotify-audio
     ```
-
+- Stats for the downloaded previews:
+    ```
+    find ../../spotify-audio/ -name "*.mp3" | sed 's/spotify-audio\///g' | sed 's/\/audio.*//' | uniq -c
+    ```
 - Search genre prototypes on Spotify API. If there is no candidate track with exact string match for artist name and title, the script asks to manually select the correct match. The script appends results to the `../../prototypes-AM-selected-genres.yaml.spotifyapi.tsv` file (FIXME filenames are hardcoded):
     ```
     python3 search_prototypes.py
 
     ```
-
 - Number of prototypes successfully matched Spotify API metadata:
     ```
     cat ../../prototypes-AM-selected-genres.yaml.spotifyapi.tsv | grep  -v "NO MATCH" | wc -l
     ```
-
 - Download previews for matched genre prototypes:
     ```
+    mkdir ../../spotify-prototypes
     ./download_spotifyids_prototypes.sh ../../prototypes-AM-selected-genres.yaml.spotifyapi.tsv ../../spotify-prototypes
     ```
-
 - Stats for the downloaded prototypes:
     ```
      find ../../spotify-prototypes/ -name "*.mp3" | sed 's/.*prototypes\///g' | sed 's/\/audio.*//' | uniq -c

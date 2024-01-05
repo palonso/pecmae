@@ -566,6 +566,7 @@ def train(
     discriminator_type: str = "mlp",
     checkpoint: Path = None,
     dataset: str = None,
+    freeze_protos: bool = False,
 ):
     hyperparams = locals()
 
@@ -659,6 +660,7 @@ def train(
             proto_loss_samples=proto_loss_samples,
             use_discriminator=use_discriminator,
             discriminator_type=discriminator_type,
+            freeze_protos=freeze_protos,
         )
     else:
         model = ZinemaNet(
@@ -675,6 +677,7 @@ def train(
             proto_loss_samples=proto_loss_samples,
             use_discriminator=use_discriminator,
             discriminator_type=discriminator_type,
+            freeze_protos=freeze_protos,
         )
 
     logger = TensorBoardLogger(
@@ -740,6 +743,7 @@ if __name__ == "__main__":
     parser.add_argument("--discriminator-type", default="mlp", choices=["mlp", "conv"])
     parser.add_argument("--checkpoint", type=Path, default=None)
     parser.add_argument("--dataset", type=str, choices=["gtzan", "nsynth", "xai_genre"])
+    parser.add_argument("--freeze-protos", action="store_true")
 
     args = parser.parse_args()
     train(
@@ -764,4 +768,5 @@ if __name__ == "__main__":
         discriminator_type=args.discriminator_type,
         checkpoint=args.checkpoint,
         dataset=args.dataset,
+        freeze_protos=args.freeze_protos,
     )

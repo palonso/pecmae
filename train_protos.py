@@ -1,6 +1,7 @@
-import pickle as pk
-from argparse import ArgumentParser
 import csv
+import pickle as pk
+import random
+from argparse import ArgumentParser
 
 # from datetime import datetime
 from pathlib import Path
@@ -17,13 +18,12 @@ from sklearn.cluster import KMeans
 
 from similarities import BilinearSimilarity, InfoNCE
 
-seed = 42
-
 
 def dataset_generator(
     metadata_file: Path,
     data_dir: Path,
     dataset: str,
+    seed: int = None,
 ):
     if dataset in ("gtzan", "nsynth"):
         with open(metadata_file, "r") as f:
@@ -41,8 +41,13 @@ def dataset_generator(
     elif dataset == "xai_genre":
         with open(metadata_file, "r") as f:
             metadata = csv.reader(f, delimiter="\t")
+            metadata = list(metadata)
 
-            for genre, sid, _, _ in metadata:
+            if seed:
+                random.seed(seed)
+            random.shuffle(metadata)
+
+            for genre, sid in metadata:
                 feature_file = (data_dir / sid).with_suffix(".npy")
                 try:
                     feature = np.load(feature_file)
@@ -51,8 +56,8 @@ def dataset_generator(
 
                 yield {
                     "feature": feature,
-                    "label": genre[6:],
-                    "sid": sid,
+                    "label": genre,
+                    "filename": sid,
                 }
 
 
@@ -207,8 +212,8 @@ class ZinemaNet(L.LightningModule):
         self.i = 0
 
     def training_step(self, batch, batch_idx, split="train"):
-        x = batch["feature"]
-        y = batch["label"]
+        x = batch["feature"].squeeze()
+        y = batch["label"].squeeze()
 
         # flatten time and embedding dimension
         x = x.flatten(1, 2)
@@ -374,26 +379,53 @@ class ZinemaNet(L.LightningModule):
 def trim_embeddings(examples: list, timestamps: int = 300, mode: str = "middle"):
     features = []
     labels = []
+    filenames = []
 
-    for feature, label in zip(examples["feature"], examples["label"]):
+    if not isinstance(examples["label"], list):
+        examples["feature"] = [examples["feature"]]
+        examples["label"] = [examples["label"]]
+        examples["filename"] = [examples["filename"]]
+
+    for feature, label, filename in zip(
+        examples["feature"], examples["label"], examples["filename"]
+    ):
         feature = np.array(feature).squeeze()
 
-        if mode == "middle":
-            middle = feature.shape[0] // 2
-            feature = feature[middle - timestamps // 2 : middle + timestamps // 2, :]
-        elif mode == "random":
-            start = np.random.randint(0, feature.shape[0] - timestamps)
-            feature = feature[start : start + timestamps, :]
-        elif mode == "beggining":
-            feature = feature[:timestamps, :]
-        elif mode == "all":
-            n_chunks = feature.shape[0] // timestamps
-            feature = feature[: n_chunks * timestamps, :].reshape(
-                -1, timestamps, feature.shape[-1]
-            )
-            labels.extend([label] * n_chunks)
-        else:
-            raise ValueError(f"mode {mode} not supported")
+        if len(feature.shape) == 3:
+            if mode == "middle":
+                middle = feature.shape[0] // 2
+                feature = feature[middle]
+            elif mode == "random":
+                index = np.random.randint(0, feature.shape[0])
+                feature = feature[index]
+            elif mode == "beggining":
+                feature = feature[0]
+            elif mode == "all":
+                labels.extend([label] * feature.shape[0])
+                filenames.extend([filename] * feature.shape[0])
+            else:
+                raise ValueError(f"mode {mode} not supported")
+
+        elif len(feature.shape) == 2:
+            if mode == "middle":
+                middle = feature.shape[0] // 2
+                feature = feature[
+                    middle - timestamps // 2 : middle + timestamps // 2, :
+                ]
+            elif mode == "random":
+                start = np.random.randint(0, feature.shape[0] - timestamps)
+                feature = feature[start : start + timestamps, :]
+            elif mode == "beggining":
+                feature = feature[:timestamps, :]
+            elif mode == "all":
+                n_chunks = feature.shape[0] // timestamps
+                feature = feature[: n_chunks * timestamps, :].reshape(
+                    -1, timestamps, feature.shape[-1]
+                )
+                labels.extend([label] * n_chunks)
+                filenames.extend([filename] * n_chunks)
+            else:
+                raise ValueError(f"mode {mode} not supported")
 
         features.append(feature)
 
@@ -403,6 +435,7 @@ def trim_embeddings(examples: list, timestamps: int = 300, mode: str = "middle")
         else:
             features = np.vstack(features).tolist()
         examples["label"] = labels
+        examples["filename"] = filenames
 
     examples["feature"] = features
     return examples
@@ -551,7 +584,6 @@ def train(
     print("trimming embeddings")
     ds = ds.map(
         trim_embeddings,
-        batched=True,
         num_proc=32,
         batch_size=32,
         fn_kwargs={"timestamps": timestamps, "mode": trim_mode},

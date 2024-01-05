@@ -1,5 +1,6 @@
 import pickle as pk
 from argparse import ArgumentParser
+import csv
 
 # from datetime import datetime
 from pathlib import Path
@@ -19,17 +20,40 @@ from similarities import BilinearSimilarity, InfoNCE
 seed = 42
 
 
-def dataset_generator(metadata_file: Path, data_dir: Path):
-    with open(metadata_file, "r") as f:
-        metadata = yaml.load(f, Loader=yaml.SafeLoader)
-    for k, v in metadata["groundTruth"].items():
-        feature_file = (data_dir / k).with_suffix(".npy")
-        feature = np.load(feature_file)
+def dataset_generator(
+    metadata_file: Path,
+    data_dir: Path,
+    dataset: str,
+):
+    if dataset in ("gtzan", "nsynth"):
+        with open(metadata_file, "r") as f:
+            metadata = yaml.load(f, Loader=yaml.SafeLoader)
+        for k, v in metadata["groundTruth"].items():
+            feature_file = (data_dir / k).with_suffix(".npy")
+            feature = np.load(feature_file)
 
-        yield {
-            "feature": feature,
-            "label": v,
-        }
+            yield {
+                "feature": feature,
+                "label": v,
+                "filename": k,
+            }
+
+    elif dataset == "xai_genre":
+        with open(metadata_file, "r") as f:
+            metadata = csv.reader(f, delimiter="\t")
+
+            for genre, sid, _, _ in metadata:
+                feature_file = (data_dir / sid).with_suffix(".npy")
+                try:
+                    feature = np.load(feature_file)
+                except FileNotFoundError:
+                    continue
+
+                yield {
+                    "feature": feature,
+                    "label": genre[6:],
+                    "sid": sid,
+                }
 
 
 lambd = 1.0
@@ -508,6 +532,7 @@ def train(
     use_discriminator: bool = False,
     discriminator_type: str = "mlp",
     checkpoint: Path = None,
+    dataset: str = None,
 ):
     hyperparams = locals()
 
@@ -518,6 +543,7 @@ def train(
         gen_kwargs={
             "metadata_file": metadata_file,
             "data_dir": data_dir,
+            "dataset": dataset,
         },
     )
 
@@ -681,6 +707,7 @@ if __name__ == "__main__":
     parser.add_argument("--use-discriminator", action="store_true"),
     parser.add_argument("--discriminator-type", default="mlp", choices=["mlp", "conv"])
     parser.add_argument("--checkpoint", type=Path, default=None)
+    parser.add_argument("--dataset", type=str, choices=["gtzan", "nsynth", "xai_genre"])
 
     args = parser.parse_args()
     train(
@@ -704,4 +731,5 @@ if __name__ == "__main__":
         use_discriminator=args.use_discriminator,
         discriminator_type=args.discriminator_type,
         checkpoint=args.checkpoint,
+        dataset=args.dataset,
     )

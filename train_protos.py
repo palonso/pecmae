@@ -499,6 +499,7 @@ def create_protos(
     n_protos_per_label: int,
     labels: set = None,
     proto_file: Path = None,
+    data_dir: Path = None,
 ):
     """Init prototypes to random weights, class centroids (kmeans) or to the sample closses to the class centroid (kmeans-sample)"""
 
@@ -516,6 +517,26 @@ def create_protos(
             n_protos,
             *shape,
         ), f"protos shape mismatch. found: {protos.shape} expected: {(n_protos, *shape)}"
+
+    elif protos_init == "proto-dict":
+        with open(proto_file, "r") as f:
+            proto_dict = yaml.safe_load(f)
+
+        protos = []
+        for label in labels:
+            candidate_protos = proto_dict[label]
+            for i in range(n_protos_per_label):
+                proto_data_file = (data_dir / candidate_protos[i]).with_suffix(".npy")
+                proto = np.load(proto_data_file)
+
+                # TODO how to use the whole proto?
+                # taking the chunk in the middle for now
+                proto = proto[proto.shape[0] // 2]
+
+                protos.append(proto)
+
+        protos = np.array(protos)
+        print("protos shape", protos.shape)
 
     elif protos_init in ("kmeans-centers", "kmeans-samples"):
         if kmeans_file.exists():
@@ -645,6 +666,7 @@ def train(
         n_protos_per_label=n_protos_per_label,
         labels=labels,
         proto_file=proto_file,
+        data_dir=data_dir,
     )
 
     loader_train = utils.data.DataLoader(
@@ -744,7 +766,13 @@ if __name__ == "__main__":
     parser.add_argument("--metadata-file", type=Path, required=True)
     parser.add_argument(
         "--protos-init",
-        choices=["random", "kmeans-centers", "kmeans-samples", "proto-file"],
+        choices=[
+            "random",
+            "kmeans-centers",
+            "kmeans-samples",
+            "proto-file",
+            "proto-dict",
+        ],
     )
     parser.add_argument("--n-protos-per-label", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=32)
@@ -760,7 +788,7 @@ if __name__ == "__main__":
     parser.add_argument("--alpha", type=float, default=0.7)
     parser.add_argument("--proto-loss", default="l2", choices=["l1", "l2", "info_nce"])
     parser.add_argument("--proto-loss-samples", default="all", choices=["all", "class"])
-    parser.add_argument("--use-discriminator", action="store_true"),
+    parser.add_argument("--use-discriminator", action="store_true")
     parser.add_argument("--discriminator-type", default="mlp", choices=["mlp", "conv"])
     parser.add_argument("--checkpoint", type=Path, default=None)
     parser.add_argument("--dataset", type=str, choices=["gtzan", "nsynth", "xai_genre"])

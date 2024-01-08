@@ -17,6 +17,26 @@ from torch import optim, nn, utils
 from sklearn.cluster import KMeans
 
 from similarities import BilinearSimilarity, InfoNCE
+from labelmaps import gtzan_label2id, nsynth_label2id, xaigenre_label2id
+
+
+def get_labelmap(dataset: str):
+    if dataset == "gtzan":
+        return gtzan_label2id
+    elif dataset == "nsynth":
+        return nsynth_label2id
+    elif dataset == "xai_genre":
+        return xaigenre_label2id
+    else:
+        raise ValueError(f"dataset {dataset} not supported")
+
+
+def label2id(examples: dict, labelmap: dict):
+    if isinstance(examples["label"], list):
+        examples["label"] = [labelmap[label] for label in examples["label"]]
+    else:
+        examples["label"] = labelmap[examples["label"]]
+    return examples
 
 
 def dataset_generator(
@@ -591,7 +611,10 @@ def train(
     )
 
     print("label encoding")
-    ds = ds.map(label_to_idx, batched=True, batch_size=len(ds))
+    ds = ds.map(
+        label2id,
+        fn_kwargs={"labelmap": get_labelmap(dataset)},
+    )
 
     # TODO: check if norm is needed
     # ds = ds.map(norm, batched=True, batch_size=len(ds))
@@ -612,7 +635,7 @@ def train(
     feat_dim = ds_val["feature"][0].shape[1]
     print(f"time_dim: {time_dim}, feat_dim: {feat_dim}")
 
-    labels = set(ds_val["label"].cpu().numpy())
+    labels = set(get_labelmap(dataset).keys())
     n_labels = len(labels)
     n_protos = n_labels * n_protos_per_label
     print(f"n_labels: {n_labels}, n_protos: {n_protos}")

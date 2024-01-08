@@ -439,7 +439,7 @@ def trim_embeddings(examples: list, timestamps: int = 300, mode: str = "middle")
             elif mode == "beggining":
                 feature = feature[:timestamps, :]
             elif mode == "all":
-                n_chunks = feature.shape[0] // timestamps
+                n_chunks = max(feature.shape[0] // timestamps, 1)
                 feature = feature[: n_chunks * timestamps, :].reshape(
                     -1, timestamps, feature.shape[-1]
                 )
@@ -451,10 +451,7 @@ def trim_embeddings(examples: list, timestamps: int = 300, mode: str = "middle")
         features.append(feature)
 
     if mode == "all":
-        if len(features) == 1:
-            features = features[0].tolist()
-        else:
-            features = np.vstack(features).tolist()
+        features = np.vstack(features).squeeze().tolist()
         examples["label"] = labels
         examples["filename"] = filenames
 

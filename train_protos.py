@@ -165,6 +165,7 @@ class ZinemaNet(L.LightningModule):
         use_discriminator: bool = False,
         discriminator_type: str = "mlp",
         distance: str = "l2",
+        freeze_protos: bool = False,
     ):
         super().__init__()
 
@@ -189,7 +190,7 @@ class ZinemaNet(L.LightningModule):
         self.n_protos_per_label = self.n_protos // self.n_labels
 
         self.protos = nn.Parameter(
-            data=torch.tensor(self.protos_weights), requires_grad=True
+            data=torch.tensor(self.protos_weights), requires_grad=not freeze_protos
         )
         self.linear = nn.Linear(self.n_protos, self.n_labels)
 
@@ -791,5 +792,4 @@ if __name__ == "__main__":
         discriminator_type=args.discriminator_type,
         checkpoint=args.checkpoint,
         dataset=args.dataset,
-        freeze_protos=args.freeze_protos,
     )

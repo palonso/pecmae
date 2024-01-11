@@ -436,7 +436,7 @@ def trim_embeddings(examples: list, timestamps: int = 300, mode: str = "middle")
     for feature, label, filename in zip(
         examples["feature"], examples["label"], examples["filename"]
     ):
-        feature = np.array(feature).squeeze()
+        feature = np.array(feature)
 
         if len(feature.shape) == 3:
             if mode == "middle":
@@ -459,11 +459,14 @@ def trim_embeddings(examples: list, timestamps: int = 300, mode: str = "middle")
                 feature = feature[
                     middle - timestamps // 2 : middle + timestamps // 2, :
                 ]
+                feature = np.expand_dims(feature, 0)
             elif mode == "random":
                 start = np.random.randint(0, feature.shape[0] - timestamps)
                 feature = feature[start : start + timestamps, :]
-            elif mode == "beggining":
+                feature = np.expand_dims(feature, 0)
+            elif mode == "beginning":
                 feature = feature[:timestamps, :]
+                feature = np.expand_dims(feature, 0)
             elif mode == "all":
                 n_chunks = max(feature.shape[0] // timestamps, 1)
                 feature = feature[: n_chunks * timestamps, :].reshape(
@@ -477,9 +480,13 @@ def trim_embeddings(examples: list, timestamps: int = 300, mode: str = "middle")
         features.append(feature)
 
     if mode == "all":
-        features = np.vstack(features).squeeze().tolist()
         examples["label"] = labels
         examples["filename"] = filenames
+
+    features = np.vstack(features)
+    if features.shape[0] == 1:
+        features = features.squeeze(0)
+    features = features.tolist()
 
     examples["feature"] = features
     return examples
@@ -647,11 +654,12 @@ def train(
         },
     )
 
-    # trim embeddings, select beggining, middle or random chunk
+    # trim embeddings, select beginning, middle or random chunk
     print("trimming embeddings")
     ds = ds.map(
         trim_embeddings,
         num_proc=32,
+        batched=True,
         batch_size=32,
         fn_kwargs={"timestamps": timestamps, "mode": trim_mode},
     )

@@ -272,14 +272,15 @@ class ZinemaNet(L.LightningModule):
         if split == "train":
             optimizer_c.zero_grad()
 
-        similarity = self.info_nce(x, protos, output="logits")
-
         if self.proto_loss == "info_nce":
+            similarity = self.info_nce(x, protos, output="logits")
             distance = torch.exp(-similarity)
         elif self.proto_loss == "l1":
             distance = torch.mean(torch.abs((x.unsqueeze(1) - protos.unsqueeze(0))), -1)
+            similarity = torch.exp(-distance)
         elif self.proto_loss == "l2":
             distance = torch.mean((x.unsqueeze(1) - protos.unsqueeze(0)) ** 2, -1)
+            similarity = torch.exp(-distance)
         else:
             raise ValueError(f"distance {self.proto_loss} not supported")
 
@@ -299,7 +300,10 @@ class ZinemaNet(L.LightningModule):
             indices = torch.argsort(distance, axis=0)
             distance_mask = torch.inf * torch.ones_like(indices)
             for i in range(len(distance_mask)):
-                distance_mask[i, y[i]] = distance[i, y[i]]
+                for j in range(self.n_protos_per_label):
+                    distance_mask[i, y[i] * self.n_protos_per_label + j] = distance[
+                        i, y[i] * self.n_protos_per_label + j
+                    ]
 
             min_dis = torch.min(distance_mask, axis=0).values
             min_dis_clean = min_dis[torch.where(min_dis != torch.inf)]

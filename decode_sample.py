@@ -1,7 +1,7 @@
 import functools
-from functools import partial
 from argparse import ArgumentParser
 from pathlib import Path
+from functools import partial
 from math import pi
 
 import torch
@@ -19,8 +19,6 @@ from encodecmae.tasks.models.transformers import (
     SinusoidalPositionalEmbeddings,
 )
 
-from labelmaps import xaigenre_id2label, gtzan_id2label, nsynth_id2label
-
 sr = 24000
 
 
@@ -30,8 +28,7 @@ model_map = {
 }
 
 parser = ArgumentParser()
-parser.add_argument("version", type=str)
-parser.add_argument("dataset", choices=["xaigenre", "gtzan", "nsynth"])
+parser.add_argument("filename", type=Path)
 parser.add_argument(
     "--model-size",
     type=str,
@@ -39,25 +36,14 @@ parser.add_argument(
     choices=["base", "base_diffusion", "large", "large_diffusion"],
 )
 parser.add_argument("--device", type=str, default="cuda:1")
-parser.add_argument("--output-dir", type=Path, default="out_data/decoded/")
-parser.add_argument("--samples-file", action="store_true")
+parser.add_argument("--output_dir", type=Path, default="out_data/decoded/")
 args = parser.parse_args()
 
-version = args.version
-dataset = args.dataset
+filename = args.filename
 model_size = args.model_size
 device = args.device
 output_dir = args.output_dir
-samples_file = args.samples_file
 
-if dataset == "xaigenre":
-    label_map = xaigenre_id2label
-elif dataset == "gtzan":
-    label_map = gtzan_id2label
-elif dataset == "nsynth":
-    label_map = nsynth_id2label
-else:
-    raise ValueError(f"Unknown dataset: {dataset}")
 
 if model_size == "base":
 
@@ -124,12 +110,7 @@ elif model_size == "large":
     ecmae2ec.to(device)
     ecmae2ec.eval()
 
-
 elif model_size in ("base_diffusion", "large_diffusion"):
-    diffusion_steps = 35
-    guidance_strength = 1
-    win_size = 24000
-    hop_size = 24000
 
     class TransformerCLSEncoder(torch.nn.Module):
         def __init__(
@@ -306,65 +287,48 @@ elif model_size in ("base_diffusion", "large_diffusion"):
     ecmae.load_state_dict(torch.load(ckpt_file, map_location=device)["state_dict"])
     ecmae.to(device)
 
+
 else:
     raise ValueError(f"Unknown model size: {model_size}")
 
 
 ec = EncodecModel.encodec_model_24khz()
 ec.to(device)
+data = np.load(filename)
 
-if samples_file:
-    prefix = "samples"
-else:
-    prefix = "protos"
+encmae_feats = torch.tensor(data, device=device)
 
-learned_protos = np.load(f"out_data/{prefix}_{version}.npy")
-protos_per_label = learned_protos.shape[0] // len(label_map)
-print(f"protos per label: {protos_per_label}")
+if model_size in ("base_diffusion", "large_diffusion"):
+    audio = np.zeros((encmae_feats.shape[0] - 1) * hop_size + win_size)
 
-label_i = 0
-for i_proto in range(learned_protos.shape[0]):
-    print(f"class {label_map[label_i]}")
-    encmae_feats = torch.tensor(learned_protos[i_proto], device=device).unsqueeze(1)
-
-    if model_size in ("base_diffusion", "large_diffusion"):
-        audio = np.zeros((encmae_feats.shape[0] - 1) * hop_size + win_size)
-
-        # sample_feats = encmae_feats[0].unsqueeze(0)
-        for i in tqdm(range(encmae_feats.shape[0])):
-            sample_feats = encmae_feats[i].unsqueeze(0)
-            # sample_feats /= 2
-
-            with torch.no_grad():
-                rec = ecmae.sample(
-                    sample_feats,
-                    steps=diffusion_steps,
-                    guidance_strength=guidance_strength,
-                    length=win_size * 75 // 24000,
-                )
-                ecmae_features = rec[-1]
-                reconstruction = ec.decoder(ecmae_features.transpose(1, 2))
-                audio[i * hop_size : i * hop_size + win_size] += (
-                    audio[i * hop_size : i * hop_size + win_size]
-                    + reconstruction[0, 0].detach().cpu().numpy()
-                )
-
-    elif model_size in ("base", "large"):
+    for i in tqdm(range(encmae_feats.shape[0])):
         with torch.no_grad():
-            ec_dec_in = ecmae2ec(encmae_feats)
-            reconstruction = ec.decoder(ec_dec_in.transpose(1, 2))
+            rec = ecmae.sample(
+                encmae_feats[i].unsqueeze(0),
+                steps=diffusion_steps,
+                guidance_strength=guidance_strength,
+                length=win_size * 75 // 24000,
+            )
+            ecmae_features = rec[-1]
+            reconstruction = ec.decoder(ecmae_features.transpose(1, 2))
+            audio[i * hop_size : i * hop_size + win_size] += (
+                audio[i * hop_size : i * hop_size + win_size]
+                + reconstruction[0, 0].detach().cpu().numpy()
+            )
 
-        audio = reconstruction.cpu().numpy().squeeze()
+elif model_size in ("base", "large"):
+    with torch.no_grad():
+        ec_dec_in = ecmae2ec(encmae_feats)
+        reconstruction = ec.decoder(ec_dec_in.transpose(1, 2))
 
-    out_path = (
-        output_dir
-        / f"{version}_{label_map[label_i]}_n{(i_proto + 1) % protos_per_label}.wav"
-    )
+    audio = reconstruction.cpu().numpy().squeeze()
 
-    if not out_path.parent.exists():
-        out_path.parent.mkdir(parents=True)
+    if len(audio.shape) > 1:
+        audio = audio.flatten()
 
-    MonoWriter(filename=str(out_path), sampleRate=sr)(audio)
+out_path = output_dir / filename.with_suffix(".wav").name
 
-    if (i_proto + 1) % protos_per_label == 0:
-        label_i += 1
+if not out_path.parent.exists():
+    out_path.parent.mkdir(parents=True)
+
+MonoWriter(filename=str(out_path), sampleRate=sr)(audio)

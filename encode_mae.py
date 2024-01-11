@@ -27,7 +27,7 @@ parser.add_argument(
     "--model-size",
     type=str,
     default="base",
-    choices=["base", "base_diffusion", "large"],
+    choices=["base", "base_diffusion", "large", "large_diffusion"],
 )
 parser.add_argument("--format", type=str, default="wav", choices=["wav", "mp3"])
 parser.add_argument("--device", type=str, default="cuda:0")
@@ -37,11 +37,7 @@ args = parser.parse_args()
 device = args.device
 model_size = args.model_size
 
-if model_size == "base_diffusion":
-    diffusion_steps = 35
-    guidance_strength = 1
-    win_size = 24000
-    hop_size = 24000
+if model_size in ("base_diffusion", "large_diffusion"):
 
     class TransformerCLSEncoder(torch.nn.Module):
         def __init__(
@@ -186,9 +182,27 @@ if model_size == "base_diffusion":
                     noise_sequence.append(x_noisy)
             return noise_sequence
 
+    if model_size == "base_diffusion":
+        model_filename = (
+            "ae/diffusion_encodec_transformer_4L8Lclsx1_punc01_250ksteps.ckpt"
+        )
+        diffusion_steps = 35
+        guidance_strength = 1
+        win_size = 24000
+        hop_size = 24000
+
+    elif model_size == "large_diffusion":
+        model_filename = (
+            "ae/diffusion_encodec_transformer_4L8Lclsx1_punc01_330ksteps.ckpt"
+        )
+        diffusion_steps = 40
+        guidance_strength = 1
+        win_size = 24000 * 4
+        hop_size = 24000 * 4
+
     ckpt_file = hf_hub_download(
         repo_id="lpepino/encodecmae-base",
-        filename="ae/diffusion_encodec_transformer_4L8Lclsx1_punc01_250ksteps.ckpt",
+        filename=model_filename,
     )
 
     ecmae = TransformerAEDiffusion(
@@ -199,6 +213,7 @@ if model_size == "base_diffusion":
     )
     ecmae.load_state_dict(torch.load(ckpt_file, map_location=device)["state_dict"])
     ecmae.to(device)
+
 
 else:
     ecmae = load_model("base", device=device)
@@ -222,9 +237,9 @@ for audio_file in tqdm(audio_files):
 
     xorig, fs = librosa.core.load(audio_file, sr=24000)
 
-    if model_size == "base_diffusion":
+    if model_size in ("base_diffusion", "large_diffusion"):
         ecmae_feature_stack = []
-        for i in tqdm(range(0, len(xorig) - win_size, hop_size)):
+        for i in range(0, max(len(xorig) - win_size, 1), hop_size):
             x = {
                 "wav": torch.from_numpy(xorig[i : i + win_size])
                 .unsqueeze(0)

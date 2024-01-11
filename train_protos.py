@@ -699,7 +699,7 @@ def train(
         protos_init,
         (time_dim, feat_dim),
         n_protos_per_label=n_protos_per_label,
-        labels=labels,
+        labels=list(range(len(labels))),
         proto_file=proto_file,
         data_dir=data_dir,
     )

@@ -445,7 +445,7 @@ def trim_embeddings(examples: list, timestamps: int = 300, mode: str = "middle")
             elif mode == "random":
                 index = np.random.randint(0, feature.shape[0])
                 feature = feature[index]
-            elif mode == "beggining":
+            elif mode == "beginning":
                 feature = feature[0]
             elif mode == "all":
                 labels.extend([label] * feature.shape[0])

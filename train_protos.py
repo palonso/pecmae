@@ -166,6 +166,7 @@ class ZinemaNet(L.LightningModule):
         discriminator_type: str = "mlp",
         distance: str = "l2",
         freeze_protos: bool = False,
+        time_summarization: str = None,
     ):
         super().__init__()
 
@@ -184,7 +185,8 @@ class ZinemaNet(L.LightningModule):
         self.use_discriminator = use_discriminator
         self.discriminator_type = discriminator_type
         self.distance = distance
-        self.save_protos_each_n_steps = 5000
+        self.save_protos_each_n_steps = 50000
+        self.time_summarization = time_summarization
 
         self.n_protos = self.protos_weights.shape[0]
         self.n_protos_per_label = self.n_protos // self.n_labels
@@ -232,13 +234,27 @@ class ZinemaNet(L.LightningModule):
 
         self.i = 0
 
+        if self.time_summarization == "lstm":
+            self.time_summarizer = nn.LSTM(
+                input_size=self.feat_dim,
+                hidden_size=self.feat_dim,
+                num_layers=4,
+                dropout=0.2,
+                batch_first=True,
+            )
+
     def training_step(self, batch, batch_idx, split="train"):
-        x = batch["feature"].squeeze()
-        y = batch["label"].squeeze()
+        x = batch["feature"]
+        y = batch["label"]
 
         # flatten time and embedding dimension
-        x = x.flatten(1, 2)
-        protos = self.protos.flatten(1, 2)
+        if self.time_summarization is None:
+            x = x.flatten(1)
+            protos = self.protos.flatten(1)
+
+        elif self.time_summarization == "lstm":
+            protos = self.time_summarizer(self.protos)[0].flatten(1)
+            x = x.flatten(1)
 
         optimizers = self.optimizers()
         lr_schedulers = self.lr_schedulers()
@@ -386,7 +402,13 @@ class ZinemaNet(L.LightningModule):
         return optimizers
 
     def save_checkpoint(self):
-        protos = self.protos.detach().cpu().numpy()
+        if self.time_summarization:
+            with torch.no_grad():
+                protos = self.time_summarizer(self.protos)[0]
+        else:
+            protos = self.protos
+
+        protos = protos.detach().cpu().numpy()
 
         out_data_dir = Path("out_data/")
         out_data_dir.mkdir(exist_ok=True)
@@ -606,6 +628,7 @@ def train(
     checkpoint: Path = None,
     dataset: str = None,
     freeze_protos: bool = False,
+    time_summarization: str = None,
 ):
     hyperparams = locals()
 
@@ -721,6 +744,7 @@ def train(
             use_discriminator=use_discriminator,
             discriminator_type=discriminator_type,
             freeze_protos=freeze_protos,
+            time_summarization=time_summarization,
         )
 
     logger = TensorBoardLogger(
@@ -747,7 +771,12 @@ def train(
 
     # save parameters
     lin_weights = model.linear.weight.detach().cpu().numpy()
-    protos = model.protos.detach().cpu().numpy()
+    if model.time_summarization:
+        with torch.no_grad():
+            protos = model.time_summarizer(model.protos)[0].flatten(1, 2)
+    else:
+        protos = model.protos
+    protos = protos.detach().cpu().numpy()
 
     # current_timestamp = datetime.now()
     # formatted_timestamp = current_timestamp.strftime("%y%m%d_%H%M%S")
@@ -793,6 +822,12 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint", type=Path, default=None)
     parser.add_argument("--dataset", type=str, choices=["gtzan", "nsynth", "xai_genre"])
     parser.add_argument("--freeze-protos", action="store_true")
+    parser.add_argument(
+        "--time-summarization",
+        type=str,
+        default=None,
+        choices=[None, "lstm", "attention"],
+    )
 
     args = parser.parse_args()
     train(
@@ -817,4 +852,5 @@ if __name__ == "__main__":
         discriminator_type=args.discriminator_type,
         checkpoint=args.checkpoint,
         dataset=args.dataset,
+        time_summarization=args.time_summarization,
     )

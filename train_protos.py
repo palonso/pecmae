@@ -586,7 +586,7 @@ def create_protos(
                 print(f"computing kmeans for label {label}")
 
                 indices = ds_np["label"] == label
-                samples = ds_np["feature"][indices]
+                samples = ds_np["feature"][indices.squeeze()]
 
                 # select a slice of timestamps samples to speed up kmeans
                 samples = samples.reshape(samples.shape[0], -1)

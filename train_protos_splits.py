@@ -136,7 +136,7 @@ def train(
         data_dir=Path("feats_xai_genre_v2_protos/base/audio/"),
     )
 
-    loader_train = utils.data.DataLoader(ds_train, batch_size=batch_size)
+    loader_train = utils.data.DataLoader(ds_train, batch_size=batch_size, shuffle=True)
     loader_val = utils.data.DataLoader(ds_val, batch_size=batch_size)
     loader_test = utils.data.DataLoader(ds_test, batch_size=batch_size)
 

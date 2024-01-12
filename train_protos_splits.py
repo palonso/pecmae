@@ -243,7 +243,9 @@ if __name__ == "__main__":
     parser.add_argument("--alpha", type=float, default=0.7)
     parser.add_argument("--proto-loss", default="l2", choices=["l1", "l2", "info_nce"])
     parser.add_argument("--proto-loss-samples", default="all", choices=["all", "class"])
-    parser.add_argument("--use-discriminator", action="store_true"),
+    parser.add_argument(
+        "--use-discriminator", type=lambda x: x == "True", default=False
+    )
     parser.add_argument("--discriminator-type", default="mlp", choices=["mlp", "conv"])
     parser.add_argument("--checkpoint", type=Path, default=None)
     parser.add_argument("--dataset", type=str, choices=["gtzan", "nsynth", "xai_genre"])

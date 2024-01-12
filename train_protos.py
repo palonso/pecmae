@@ -297,15 +297,18 @@ class ZinemaNet(L.LightningModule):
             loss_p = torch.mean(torch.min(distance, dim=0).values)
 
         elif self.proto_loss_samples == "class":
-            indices = torch.argsort(distance, axis=0)
-            distance_mask = torch.inf * torch.ones_like(indices)
-            for i in range(len(distance_mask)):
-                for j in range(self.n_protos_per_label):
-                    distance_mask[i, y[i] * self.n_protos_per_label + j] = distance[
-                        i, y[i] * self.n_protos_per_label + j
-                    ]
+            distance_mask = torch.inf * torch.ones_like(distance)
+            idx = torch.zeros_like(distance_mask).byte()
 
-            min_dis = torch.min(distance_mask, axis=0).values
+            for j in range(self.n_protos_per_label):
+                idx += torch.nn.functional.one_hot(
+                    y * self.n_protos_per_label + j,
+                    num_classes=distance.shape[1],
+                )
+
+            distance_mask[idx] = distance[idx]
+
+            min_dis = torch.min(distance_mask, dim=0).values
             min_dis_clean = min_dis[torch.where(min_dis != torch.inf)]
 
             loss_p = torch.mean(min_dis_clean)

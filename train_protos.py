@@ -540,7 +540,6 @@ def create_protos(
     """Init prototypes to random weights, class centroids (kmeans) or to the sample closses to the class centroid (kmeans-sample)"""
 
     n_protos = n_protos_per_label * len(labels)
-    kmeans_file = Path(f"kmeans_data_{len(labels)}labels_{n_protos}protos.pk")
 
     if protos_init == "random":
         protos = torch.randn([n_protos, *shape])
@@ -575,33 +574,25 @@ def create_protos(
         print("protos shape", protos.shape)
 
     elif protos_init in ("kmeans-centers", "kmeans-samples"):
-        if kmeans_file.exists():
-            print("kmeans data file found, loading...")
-            with open(kmeans_file, "rb") as handle:
-                kmeans_data = pk.load(handle)
-        else:
-            print("kmeans data file not found, computing...")
-            # compute k_means
-            ds_np = ds.with_format("numpy")
+        # compute k_means
+        ds_np = ds.with_format("numpy")
 
-            kmeans_data = dict()
-            for label in list(labels):
-                print(f"computing kmeans for label {label}")
+        kmeans_data = dict()
+        for label in list(labels):
+            print(f"computing kmeans for label {label}")
 
-                indices = ds_np["label"] == label
-                samples = ds_np["feature"][indices.squeeze()]
+            indices = ds_np["label"] == label
+            samples = ds_np["feature"][indices.squeeze()]
 
-                # select a slice of timestamps samples to speed up kmeans
-                samples = samples.reshape(samples.shape[0], -1)
-                kmeans = KMeans(n_clusters=n_protos_per_label, n_init="auto")
-                samples_dis = kmeans.fit_transform(samples)
-                kmeans_data[f"label.{label}.distances"] = samples_dis
-                kmeans_data[f"label.{label}.centers"] = kmeans.cluster_centers_
-                kmeans_data[f"label.{label}.samples"] = samples[
-                    np.argmin(samples_dis, axis=0)
-                ]
-
-            pk.dump(kmeans_data, open(kmeans_file, "wb"))
+            # select a slice of timestamps samples to speed up kmeans
+            samples = samples.reshape(samples.shape[0], -1)
+            kmeans = KMeans(n_clusters=n_protos_per_label, n_init="auto")
+            samples_dis = kmeans.fit_transform(samples)
+            kmeans_data[f"label.{label}.distances"] = samples_dis
+            kmeans_data[f"label.{label}.centers"] = kmeans.cluster_centers_
+            kmeans_data[f"label.{label}.samples"] = samples[
+                np.argmin(samples_dis, axis=0)
+            ]
 
         if protos_init == "kmeans-samples":
             print("using kmeans  closest sample as protos")

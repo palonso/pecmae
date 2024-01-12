@@ -298,13 +298,17 @@ class ZinemaNet(L.LightningModule):
 
         elif self.proto_loss_samples == "class":
             distance_mask = torch.inf * torch.ones_like(distance)
-            idx = torch.zeros_like(distance_mask).byte()
+            idx = torch.zeros_like(distance_mask)
 
             for j in range(self.n_protos_per_label):
                 idx += torch.nn.functional.one_hot(
                     y * self.n_protos_per_label + j,
                     num_classes=distance.shape[1],
                 )
+
+            # Index with a boolean mask (similar to numpy).
+            # https://docs.scipy.org/doc/numpy-1.13.0/reference/arrays.indexing.html#boolean-array-indexing
+            idx = idx.bool()
 
             distance_mask[idx] = distance[idx]
 

@@ -17,7 +17,12 @@ from torch import optim, nn, utils
 from sklearn.cluster import KMeans
 
 from similarities import BilinearSimilarity, InfoNCE
-from labelmaps import gtzan_label2id, nsynth_label2id, xaigenre_label2id
+from labelmaps import (
+    gtzan_label2id,
+    nsynth_label2id,
+    xaigenre_label2id,
+    medley_solos_label2id,
+)
 
 
 def get_labelmap(dataset: str):
@@ -27,6 +32,8 @@ def get_labelmap(dataset: str):
         return nsynth_label2id
     elif dataset == "xai_genre":
         return xaigenre_label2id
+    elif dataset == "medley_solos":
+        return medley_solos_label2id
     else:
         raise ValueError(f"dataset {dataset} not supported")
 
@@ -58,7 +65,7 @@ def dataset_generator(
                 "filename": k,
             }
 
-    elif dataset == "xai_genre":
+    elif dataset in ("xai_genre", "medley_solos", "gtzan"):
         with open(metadata_file, "r") as f:
             metadata = csv.reader(f, delimiter="\t")
             metadata = list(metadata)
@@ -830,7 +837,9 @@ if __name__ == "__main__":
     parser.add_argument("--use-discriminator", action="store_true")
     parser.add_argument("--discriminator-type", default="mlp", choices=["mlp", "conv"])
     parser.add_argument("--checkpoint", type=Path, default=None)
-    parser.add_argument("--dataset", type=str, choices=["gtzan", "nsynth", "xai_genre"])
+    parser.add_argument(
+        "--dataset", type=str, choices=["gtzan", "nsynth", "xai_genre", "medley_solos"]
+    )
     parser.add_argument("--freeze-protos", action="store_true")
     parser.add_argument(
         "--time-summarization",

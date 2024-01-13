@@ -19,6 +19,11 @@ from train_protos import (
 from labelmaps import gtzan_label2id, nsynth_label2id, xaigenre_label2id
 
 
+def norm(sample, mean, std):
+    sample["feature"] = (sample["feature"] - mean) / (std * 2)
+    return sample
+
+
 def get_dataset(
     metadata_file: Path,
     data_dir: Path,
@@ -26,6 +31,9 @@ def get_dataset(
     timestamps: int,
     trim_mode: str,
     seed: int = None,
+    do_normalization: bool = False,
+    ds_mean: float = None,
+    ds_std: float = None,
 ):
     ds = Dataset.from_generator(
         dataset_generator,
@@ -45,8 +53,18 @@ def get_dataset(
         label2id,
         fn_kwargs={"labelmap": get_labelmap(dataset)},
     )
+    if do_normalization:
+        if not ds_std or not ds_mean:
+            print("computing dataset stats...")
+            features = ds.with_format("numpy")["feature"].squeeze()
+            ds_mean = np.mean(features.mean(axis=1))
+            ds_std = np.mean(features.std(axis=1))
+            print(f"mean: {ds_mean} std: {ds_std}")
+
+        ds = ds.map(norm, fn_kwargs={"mean": ds_mean, "std": ds_std})
+
     ds = ds.with_format("torch")
-    return ds
+    return ds, ds_mean, ds_std
 
 
 def train(
@@ -74,29 +92,35 @@ def train(
     checkpoint: Path = None,
     dataset: str = None,
     freeze_protos: bool = False,
-    time_summarization: str = None,
+    time_summarization: str = "none",
+    do_normalization: bool = False,
 ):
     hyperparams = locals()
 
     if data_dir_test is None:
         data_dir_test = data_dir
 
-    ds_train = get_dataset(
+    ds_train, ds_mean, ds_std = get_dataset(
         metadata_file_train,
         data_dir,
         dataset,
         timestamps,
         trim_mode,
         seed=seed,
+        do_normalization=do_normalization,
     )
+
     if metadata_file_val:
-        ds_val = get_dataset(
+        ds_val, _, _ = get_dataset(
             metadata_file_val,
             data_dir,
             dataset,
             timestamps,
             trim_mode,
             seed=seed,
+            do_normalization=do_normalization,
+            ds_mean=ds_mean,
+            ds_std=ds_std,
         )
     else:
         print(
@@ -106,12 +130,15 @@ def train(
         ds_train = ds_split["train"]
         ds_val = ds_split["test"]
 
-    ds_test = get_dataset(
+    ds_test, _, _ = get_dataset(
         metadata_file_test,
         data_dir_test,
         dataset,
         timestamps,
         trim_mode,
+        do_normalization=do_normalization,
+        ds_mean=ds_mean,
+        ds_std=ds_std,
     )
 
     # time_dim = ds_val[0]["feature"].shape[0]
@@ -159,6 +186,9 @@ def train(
             discriminator_type=discriminator_type,
             freeze_protos=freeze_protos,
             time_summarization=time_summarization,
+            do_normalization=do_normalization,
+            ds_mean=ds_mean,
+            ds_std=ds_std,
         )
     else:
         model = ZinemaNet(
@@ -177,6 +207,9 @@ def train(
             discriminator_type=discriminator_type,
             freeze_protos=freeze_protos,
             time_summarization=time_summarization,
+            do_normalization=do_normalization,
+            ds_mean=ds_mean,
+            ds_std=ds_std,
         )
 
     logger = TensorBoardLogger(
@@ -203,7 +236,15 @@ def train(
 
     # save parameters
     lin_weights = model.linear.weight.detach().cpu().numpy()
-    protos = model.protos.detach().cpu().numpy()
+    if model.time_summarization != "none":
+        with torch.no_grad():
+            protos = model.time_summarizer(model.protos)[0]
+    else:
+        protos = model.protos
+    protos = protos.detach().cpu().numpy()
+
+    if do_normalization:
+        protos = (protos * ds_std * 2) + ds_mean
 
     out_data_dir = Path("out_data")
     out_data_dir.mkdir(exist_ok=True)
@@ -256,6 +297,7 @@ if __name__ == "__main__":
         default=None,
         choices=[None, "lstm", "attention"],
     )
+    parser.add_argument("--do-normalization", type=lambda x: x == "True", default=False)
 
     args = parser.parse_args()
     train(
@@ -284,4 +326,5 @@ if __name__ == "__main__":
         dataset=args.dataset,
         freeze_protos=args.freeze_protos,
         time_summarization=args.time_summarization,
+        do_normalization=args.do_normalization,
     )

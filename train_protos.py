@@ -251,7 +251,7 @@ class ZinemaNet(L.LightningModule):
             self.time_summarizer = nn.LSTM(
                 input_size=self.feat_dim,
                 hidden_size=self.feat_dim,
-                num_layers=4,
+                num_layers=2,
                 dropout=0.2,
                 batch_first=True,
             )

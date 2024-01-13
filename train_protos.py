@@ -76,10 +76,10 @@ def dataset_generator(
 
             for genre, sid in metadata:
                 feature_file = (data_dir / sid).with_suffix(".npy")
-                try:
-                    feature = np.load(feature_file)
-                except FileNotFoundError:
+                if not feature_file.exists():
+                    print(f"file {feature_file} does not exist")
                     continue
+                feature = np.load(feature_file)
 
                 yield {
                     "feature": feature,

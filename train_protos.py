@@ -52,7 +52,7 @@ def dataset_generator(
     dataset: str,
     seed: int = None,
 ):
-    if dataset in ("gtzan", "nsynth"):
+    if dataset in ("nsynth"):
         with open(metadata_file, "r") as f:
             metadata = yaml.load(f, Loader=yaml.SafeLoader)
         for k, v in metadata["groundTruth"].items():

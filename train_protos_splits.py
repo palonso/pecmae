@@ -290,13 +290,15 @@ if __name__ == "__main__":
     )
     parser.add_argument("--discriminator-type", default="mlp", choices=["mlp", "conv"])
     parser.add_argument("--checkpoint", type=Path, default=None)
-    parser.add_argument("--dataset", type=str, choices=["gtzan", "nsynth", "xai_genre"])
+    parser.add_argument(
+        "--dataset", type=str, choices=["gtzan", "nsynth", "xai_genre", "medley_solos"]
+    )
     parser.add_argument("--freeze-protos", action="store_true")
     parser.add_argument(
         "--time-summarization",
         type=str,
-        default=None,
-        choices=[None, "lstm", "attention"],
+        default="none",
+        choices=["none", "lstm", "attention"],
     )
     parser.add_argument("--do-normalization", type=lambda x: x == "True", default=False)
 

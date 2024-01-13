@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytorch_lightning as L
 import numpy as np
+import torch
 from datasets import Dataset
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch import utils

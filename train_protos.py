@@ -173,7 +173,10 @@ class ZinemaNet(L.LightningModule):
         discriminator_type: str = "mlp",
         distance: str = "l2",
         freeze_protos: bool = False,
-        time_summarization: str = None,
+        time_summarization: str = "none",
+        do_normalization: bool = False,
+        ds_mean: float = None,
+        ds_std: float = None,
     ):
         super().__init__()
 
@@ -194,6 +197,9 @@ class ZinemaNet(L.LightningModule):
         self.distance = distance
         self.save_protos_each_n_steps = 50000
         self.time_summarization = time_summarization
+        self.do_normalization = do_normalization
+        self.ds_mean = ds_mean
+        self.ds_std = ds_std
 
         self.n_protos = self.protos_weights.shape[0]
         self.n_protos_per_label = self.n_protos // self.n_labels
@@ -403,30 +409,19 @@ class ZinemaNet(L.LightningModule):
             {"optimizer": optimizer_c, "lr_scheduler": scheduler_c},
         ]
 
-        if self.use_discriminator:
-            optimizer_d = optim.Adam(
-                self.parameters(),
-                weight_decay=self.weight_decay,
-            )
-            scheduler_d = optim.lr_scheduler.OneCycleLR(
-                optimizer_d,
-                max_lr=self.max_lr,
-                total_steps=self.total_steps,
-            )
-            optimizers.append(
-                {"optimizer": optimizer_d, "lr_scheduler": scheduler_d},
-            )
-
         return optimizers
 
     def save_checkpoint(self):
-        if self.time_summarization:
+        if self.time_summarization != "none":
             with torch.no_grad():
                 protos = self.time_summarizer(self.protos)[0]
         else:
             protos = self.protos
 
         protos = protos.detach().cpu().numpy()
+
+        if self.do_normalization:
+            protos = (protos * self.ds_std * 2) + self.ds_mean
 
         out_data_dir = Path("out_data/")
         out_data_dir.mkdir(exist_ok=True)
@@ -645,6 +640,7 @@ def train(
     dataset: str = None,
     freeze_protos: bool = False,
     time_summarization: str = None,
+    do_normalization: bool = False,
 ):
     hyperparams = locals()
 
@@ -788,7 +784,7 @@ def train(
 
     # save parameters
     lin_weights = model.linear.weight.detach().cpu().numpy()
-    if model.time_summarization:
+    if model.time_summarization != "none":
         with torch.no_grad():
             protos = model.time_summarizer(model.protos)[0].flatten(1, 2)
     else:
@@ -834,13 +830,16 @@ if __name__ == "__main__":
     parser.add_argument("--alpha", type=float, default=0.7)
     parser.add_argument("--proto-loss", default="l2", choices=["l1", "l2", "info_nce"])
     parser.add_argument("--proto-loss-samples", default="all", choices=["all", "class"])
-    parser.add_argument("--use-discriminator", action="store_true")
+    parser.add_argument(
+        "--use-discriminator", type=lambda x: x == "True", default=False
+    )
     parser.add_argument("--discriminator-type", default="mlp", choices=["mlp", "conv"])
     parser.add_argument("--checkpoint", type=Path, default=None)
     parser.add_argument(
         "--dataset", type=str, choices=["gtzan", "nsynth", "xai_genre", "medley_solos"]
     )
     parser.add_argument("--freeze-protos", action="store_true")
+    parser.add_argument("--do-normalization", type=lambda x: x == "True", default=False)
     parser.add_argument(
         "--time-summarization",
         type=str,
@@ -872,4 +871,5 @@ if __name__ == "__main__":
         checkpoint=args.checkpoint,
         dataset=args.dataset,
         time_summarization=args.time_summarization,
+        do_normalization=args.do_normalization,
     )

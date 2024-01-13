@@ -261,13 +261,17 @@ class ZinemaNet(L.LightningModule):
         y = batch["label"]
 
         # flatten time and embedding dimension
-        if self.time_summarization is None:
+        if self.time_summarization == "none":
             x = x.flatten(1)
             protos = self.protos.flatten(1)
 
         elif self.time_summarization == "lstm":
             protos = self.time_summarizer(self.protos)[0].flatten(1)
             x = x.flatten(1)
+        else:
+            raise ValueError(
+                f"time summarization {self.time_summarization} not supported"
+            )
 
         optimizers = self.optimizers()
         lr_schedulers = self.lr_schedulers()

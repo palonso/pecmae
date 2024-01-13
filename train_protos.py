@@ -276,15 +276,8 @@ class ZinemaNet(L.LightningModule):
         optimizers = self.optimizers()
         lr_schedulers = self.lr_schedulers()
 
-        if self.use_discriminator:
-            optimizer_c = optimizers[0]
-            lr_scheduler_c = lr_schedulers[0]
-
-            optimizer_d = optimizers[1]
-            lr_scheduler_d = lr_schedulers[1]
-        else:
-            optimizer_c = optimizers
-            lr_scheduler_c = lr_schedulers
+        optimizer_c = optimizers
+        lr_scheduler_c = lr_schedulers
 
         if split == "train":
             optimizer_c.zero_grad()
@@ -301,7 +294,7 @@ class ZinemaNet(L.LightningModule):
         else:
             raise ValueError(f"distance {self.proto_loss} not supported")
 
-        self.log(f"{split}_distance", distance.mean())
+        self.log(f"{split}_distance", distance.mean(), batch_size=self.batch_size)
 
         y_hat = self.linear(similarity)
         acc = self.accuracy(y_hat, y)
@@ -336,24 +329,17 @@ class ZinemaNet(L.LightningModule):
 
         loss = self.alpha * loss_p + (1 - self.alpha) * loss_c
 
-        if split == "train":
-            self.manual_backward(loss)
-            optimizer_c.step()
-
-            lr_scheduler_c.step()
-            self.log(f"{split}_lr_class", lr_scheduler_c.get_last_lr()[0])
-
-        self.log(f"{split}_acc", acc, prog_bar=True)
-        self.log(f"{split}_class_loss", loss_c)
-        self.log(f"{split}_proto_loss", loss_p)
+        self.log(f"{split}_acc", acc, prog_bar=True, batch_size=self.batch_size)
+        self.log(f"{split}_class_loss", loss_c, batch_size=self.batch_size)
+        self.log(f"{split}_proto_loss", loss_p, batch_size=self.batch_size)
 
         if self.use_discriminator:
-            optimizer_d.zero_grad()
+            disc_weight = 1.0
 
             p = float(self.i) / self.total_steps
             global lambd
 
-            lambd = 2.0 / (1.0 + np.exp(-10.0 * p)) - 1
+            lambd = disc_weight * (2.0 / (1.0 + np.exp(-10.0 * p)) - 1)
 
             x_disc = torch.cat([x, protos], dim=0)
             y_disc = torch.cat(
@@ -375,19 +361,26 @@ class ZinemaNet(L.LightningModule):
             loss_d = self.bxent(y_disc_hat, y_disc)
             acc_disc = self.accuracy_binary(y_disc_hat, y_disc)
 
-            self.log(f"{split}_disc_acc", acc_disc)
+            loss += loss_d
+
+            self.log(f"{split}_disc_acc", acc_disc, batch_size=self.batch_size)
 
             if split == "train":
-                self.log("lambda", lambd)
-                self.manual_backward(loss_d)
-                optimizer_d.step()
+                self.log("lambda", lambd, batch_size=self.batch_size)
 
-                lr_scheduler_d.step()
-                self.log(f"{split}_lr_disc", lr_scheduler_d.get_last_lr()[0])
-
-            self.log(f"{split}_disc_loss", loss_d)
+            self.log(f"{split}_disc_loss", loss_d, batch_size=self.batch_size)
 
         if split == "train":
+            self.manual_backward(loss)
+            optimizer_c.step()
+
+            lr_scheduler_c.step()
+            self.log(
+                f"{split}_lr_class",
+                lr_scheduler_c.get_last_lr()[0],
+                batch_size=self.batch_size,
+            )
+
             if self.i % self.save_protos_each_n_steps == 0 and self.i != 0:
                 self.save_checkpoint()
 

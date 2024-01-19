@@ -2,6 +2,7 @@ import csv
 import pickle as pk
 import random
 from argparse import ArgumentParser
+from collections import defaultdict
 
 # from datetime import datetime
 from pathlib import Path
@@ -15,6 +16,7 @@ from datasets import Dataset
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch import optim, nn, utils
 from sklearn.cluster import KMeans
+from sklearn.metrics import classification_report
 
 from similarities import BilinearSimilarity, InfoNCE
 from labelmaps import (
@@ -107,13 +109,24 @@ def grad_reverse(x):
     return GradReverse.apply(x)
 
 
+class domain_classifier_linear(nn.Module):
+    def __init__(self, input_dim=1200):
+        super(domain_classifier_linear, self).__init__()
+        self.fc1 = nn.Linear(input_dim, 1)
+
+    def forward(self, x):
+        x = grad_reverse(x)
+        x = self.fc1(x)
+        return x
+
+
 class domain_classifier_mlp(nn.Module):
     def __init__(self, input_dim=1200):
         super(domain_classifier_mlp, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 100)
+        self.fc1 = nn.Linear(input_dim, 32)
         self.leaky_relu = nn.LeakyReLU()
-        self.fc2 = nn.Linear(100, 1)
-        self.drop = nn.Dropout1d(0.25)
+        self.fc2 = nn.Linear(32, 1)
+        self.drop = nn.Dropout1d(0.2)
 
     def forward(self, x):
         x = grad_reverse(x)
@@ -154,6 +167,35 @@ class domain_classifier_conv(nn.Module):
         return x
 
 
+class DenseRes(nn.Module):
+    def __init__(self, feat_dim, dropout=0.2):
+        super(DenseRes, self).__init__()
+
+        self.feat_dim = feat_dim
+        self.dropout = dropout
+
+        self.bn1 = nn.BatchNorm1d(self.feat_dim)
+        self.ln1 = nn.Linear(self.feat_dim, self.feat_dim)
+        self.relu = nn.ReLU()
+        self.bn2 = nn.BatchNorm1d(self.feat_dim, self.feat_dim)
+        self.ln2 = nn.Linear(self.feat_dim, self.feat_dim)
+
+        self.drop = nn.Dropout1d(self.dropout)
+
+    def forward(self, x):
+        x = x.flatten(1)
+
+        y = self.relu(self.ln1(x))
+        x = self.bn1(x + y)
+        x = self.drop(x)
+        y = self.relu(self.ln2(x))
+        x = self.bn2(x + y)
+
+        x.unsqueeze(1)
+
+        return x
+
+
 class ZinemaNet(L.LightningModule):
     def __init__(
         self,
@@ -177,6 +219,7 @@ class ZinemaNet(L.LightningModule):
         do_normalization: bool = False,
         ds_mean: float = None,
         ds_std: float = None,
+        labels: list = None,
     ):
         super().__init__()
 
@@ -200,6 +243,7 @@ class ZinemaNet(L.LightningModule):
         self.do_normalization = do_normalization
         self.ds_mean = ds_mean
         self.ds_std = ds_std
+        self.labels = labels
 
         self.n_protos = self.protos_weights.shape[0]
         self.n_protos_per_label = self.n_protos // self.n_labels
@@ -234,6 +278,10 @@ class ZinemaNet(L.LightningModule):
                 self.discriminator = domain_classifier_mlp(
                     input_dim=self.time_dim * self.feat_dim
                 )
+            elif self.discriminator_type == "linear":
+                self.discriminator = domain_classifier_linear(
+                    input_dim=self.time_dim * self.feat_dim
+                )
             else:
                 raise ValueError(
                     f"discriminator type {self.discriminator_type} not supported"
@@ -256,9 +304,26 @@ class ZinemaNet(L.LightningModule):
                 batch_first=True,
             )
 
+        if self.time_summarization == "transformer":
+            encoder_layer = nn.TransformerEncoderLayer(
+                d_model=self.feat_dim,
+                nhead=1,
+                batch_first=True,
+            )
+            self.time_summarizer = nn.TransformerEncoder(
+                encoder_layer=encoder_layer,
+                num_layers=1,
+            )
+        if self.time_summarization == "dense_res":
+            self.time_summarizer = DenseRes(self.feat_dim)
+
+        self.aggregated_y_hat_test = defaultdict(list)
+        self.filename_to_label = defaultdict(list)
+
     def training_step(self, batch, batch_idx, split="train"):
         x = batch["feature"]
         y = batch["label"]
+        f = batch["filename"]
 
         # flatten time and embedding dimension
         if self.time_summarization == "none":
@@ -267,6 +332,9 @@ class ZinemaNet(L.LightningModule):
 
         elif self.time_summarization == "lstm":
             protos = self.time_summarizer(self.protos)[0].flatten(1)
+            x = x.flatten(1)
+        elif self.time_summarization in ("transformer", "dense_res"):
+            protos = self.time_summarizer(self.protos).flatten(1)
             x = x.flatten(1)
         else:
             raise ValueError(
@@ -298,6 +366,14 @@ class ZinemaNet(L.LightningModule):
 
         y_hat = self.linear(similarity)
         acc = self.accuracy(y_hat, y)
+
+        if split == "test":
+            for f_sample, y_hat_sample, y_sample in zip(f, y_hat, y):
+                self.aggregated_y_hat_test[f_sample].append(
+                    y_hat_sample.detach().cpu().numpy()
+                )
+                if f_sample not in self.filename_to_label:
+                    self.filename_to_label[f_sample] = y_sample.detach().cpu().numpy()
 
         # classification loss
         loss_c = self.xent(y_hat / self.temp, y)
@@ -411,7 +487,10 @@ class ZinemaNet(L.LightningModule):
     def save_checkpoint(self):
         if self.time_summarization != "none":
             with torch.no_grad():
-                protos = self.time_summarizer(self.protos)[0]
+                protos = self.time_summarizer(self.protos)
+
+            if self.time_summarization == "lstm":
+                protos = protos[0]
         else:
             protos = self.protos
 
@@ -428,8 +507,25 @@ class ZinemaNet(L.LightningModule):
 
         np.save(protos_file, protos)
 
+    def on_test_end(self):
+        y = []
+        y_hat = []
+        for f, y_hat_aggregated in self.aggregated_y_hat_test.items():
+            y_hat_aggregated = np.array(y_hat_aggregated)
+            y_hat.append(np.argmax(np.average(y_hat_aggregated, axis=0), axis=0))
+            y.append(self.filename_to_label[f])
 
-def trim_embeddings(examples: list, timestamps: int = 300, mode: str = "middle"):
+        y_hat = np.array(y_hat)
+        y = np.array(y)
+
+        print(classification_report(y, y_hat, target_names=self.labels, digits=3))
+
+
+def trim_embeddings(
+    examples: list,
+    timestamps: int = 300,
+    mode: str = "middle",
+):
     features = []
     labels = []
     filenames = []
@@ -737,6 +833,7 @@ def train(
             use_discriminator=use_discriminator,
             discriminator_type=discriminator_type,
             freeze_protos=freeze_protos,
+            labels=labels,
         )
     else:
         model = ZinemaNet(
@@ -755,6 +852,7 @@ def train(
             discriminator_type=discriminator_type,
             freeze_protos=freeze_protos,
             time_summarization=time_summarization,
+            labels=labels,
         )
 
     logger = TensorBoardLogger(
@@ -783,7 +881,10 @@ def train(
     lin_weights = model.linear.weight.detach().cpu().numpy()
     if model.time_summarization != "none":
         with torch.no_grad():
-            protos = model.time_summarizer(model.protos)[0].flatten(1, 2)
+            protos = model.time_summarizer(model.protos)
+
+        if model.time_summarization == "lstm":
+            protos = protos[0]
     else:
         protos = model.protos
     protos = protos.detach().cpu().numpy()
@@ -830,7 +931,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--use-discriminator", type=lambda x: x == "True", default=False
     )
-    parser.add_argument("--discriminator-type", default="mlp", choices=["mlp", "conv"])
+    parser.add_argument(
+        "--discriminator-type", default="mlp", choices=["mlp", "conv", "linear"]
+    )
     parser.add_argument("--checkpoint", type=Path, default=None)
     parser.add_argument(
         "--dataset", type=str, choices=["gtzan", "nsynth", "xai_genre", "medley_solos"]
@@ -841,7 +944,7 @@ if __name__ == "__main__":
         "--time-summarization",
         type=str,
         default=None,
-        choices=[None, "lstm", "attention"],
+        choices=[None, "lstm", "transformer", "dense_res"],
     )
 
     args = parser.parse_args()

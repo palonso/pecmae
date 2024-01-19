@@ -19,7 +19,12 @@ from encodecmae.tasks.models.transformers import (
     SinusoidalPositionalEmbeddings,
 )
 
-from labelmaps import xaigenre_id2label, gtzan_id2label, nsynth_id2label
+from labelmaps import (
+    xaigenre_id2label,
+    gtzan_id2label,
+    nsynth_id2label,
+    medley_solos_id2label,
+)
 
 sr = 24000
 
@@ -31,7 +36,7 @@ model_map = {
 
 parser = ArgumentParser()
 parser.add_argument("version", type=str)
-parser.add_argument("dataset", choices=["xaigenre", "gtzan", "nsynth"])
+parser.add_argument("dataset", choices=["xaigenre", "gtzan", "nsynth", "medley_solos"])
 parser.add_argument(
     "--model-size",
     type=str,
@@ -41,6 +46,7 @@ parser.add_argument(
 parser.add_argument("--device", type=str, default="cuda:1")
 parser.add_argument("--output-dir", type=Path, default="out_data/decoded/")
 parser.add_argument("--samples-file", action="store_true")
+parser.add_argument("--guidance-strength", type=float, default=1)
 args = parser.parse_args()
 
 version = args.version
@@ -49,6 +55,7 @@ model_size = args.model_size
 device = args.device
 output_dir = args.output_dir
 samples_file = args.samples_file
+guidance_strength = args.guidance_strength
 
 if dataset == "xaigenre":
     label_map = xaigenre_id2label
@@ -56,6 +63,8 @@ elif dataset == "gtzan":
     label_map = gtzan_id2label
 elif dataset == "nsynth":
     label_map = nsynth_id2label
+elif dataset == "medley_solos":
+    label_map = medley_solos_id2label
 else:
     raise ValueError(f"Unknown dataset: {dataset}")
 
@@ -126,10 +135,6 @@ elif model_size == "large":
 
 
 elif model_size in ("base_diffusion", "large_diffusion"):
-    diffusion_steps = 35
-    guidance_strength = 1
-    win_size = 24000
-    hop_size = 24000
 
     class TransformerCLSEncoder(torch.nn.Module):
         def __init__(
@@ -276,7 +281,6 @@ elif model_size in ("base_diffusion", "large_diffusion"):
 
     if model_size == "base_diffusion":
         diffusion_steps = 35
-        guidance_strength = 1
         win_size = 24000
         hop_size = 24000
         model_filename = (
@@ -285,7 +289,6 @@ elif model_size in ("base_diffusion", "large_diffusion"):
 
     elif model_size == "large_diffusion":
         diffusion_steps = 40
-        guidance_strength = 1
         win_size = 24000 * 4
         hop_size = 24000 * 4
         model_filename = (
@@ -319,6 +322,9 @@ else:
     prefix = "protos"
 
 learned_protos = np.load(f"out_data/{prefix}_{version}.npy")
+if len(learned_protos.shape) == 2:
+    learned_protos = learned_protos[:, None, :]
+
 protos_per_label = learned_protos.shape[0] // len(label_map)
 print(f"protos per label: {protos_per_label}")
 
@@ -358,7 +364,7 @@ for i_proto in range(learned_protos.shape[0]):
 
     out_path = (
         output_dir
-        / f"{version}_{label_map[label_i]}_n{(i_proto + 1) % protos_per_label}.wav"
+        / f"{version}_{label_map[label_i]}_n{(i_proto + 1) % protos_per_label}_gs{guidance_strength}.wav"
     )
 
     if not out_path.parent.exists():

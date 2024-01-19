@@ -1,3 +1,4 @@
+from argparse import ArgumentParser
 from pathlib import Path
 
 from datasets import load_dataset, Audio
@@ -9,8 +10,17 @@ from encodecmae import load_model
 
 device = "cuda:0"
 
+parser = ArgumentParser()
 
-audio_dir = Path("/mnt/mtgdb-audio/stable/genre_tzanetakis/audio/22kmono/")
+parser.add_argument("audio_dir", type=Path)
+parser.add_argument("output_dir", type=Path)
+
+args = parser.parse_args()
+audio_dir = args.audio_dir
+output_dir = args.output_dir
+
+
+# audio_dir = Path("/mnt/mtgdb-audio/stable/genre_tzanetakis/audio/22kmono/")
 dataset = load_dataset("audiofolder", data_dir=audio_dir, split="train")
 
 
@@ -26,7 +36,7 @@ dataset = dataset.cast_column("audio", Audio(sampling_rate=processor.sampling_ra
 # cast the audio data to the correct sampling rate for the model
 for sample in tqdm(dataset):
     path = Path(sample["audio"]["path"])
-    output_path = Path("features_encodecmae") / path.parent.name / path.stem
+    output_path = output_dir / path.parent.name / path.stem
     if output_path.exists():
         continue
     inputs = processor(

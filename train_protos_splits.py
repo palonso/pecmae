@@ -7,6 +7,7 @@ import numpy as np
 import torch
 from datasets import Dataset
 from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.callbacks import ModelCheckpoint
 from torch import utils
 
 from train_protos import (
@@ -190,6 +191,7 @@ def train(
             do_normalization=do_normalization,
             ds_mean=ds_mean,
             ds_std=ds_std,
+            labels=labels,
         )
     else:
         model = ZinemaNet(
@@ -211,6 +213,7 @@ def train(
             do_normalization=do_normalization,
             ds_mean=ds_mean,
             ds_std=ds_std,
+            labels=labels,
         )
 
     logger = TensorBoardLogger(
@@ -220,6 +223,8 @@ def train(
 
     logger.log_hyperparams(hyperparams)
 
+    checkpoint_callback = ModelCheckpoint(monitor="val_class_loss")
+
     trainer = L.Trainer(
         max_steps=total_steps,
         devices=[gpu_id],
@@ -227,19 +232,24 @@ def train(
         num_sanity_val_steps=0,
         precision="16-mixed",
         logger=logger,
+        callbacks=[checkpoint_callback],
     )
     trainer.fit(
         model,
         loader_train,
         loader_val,
     )
-    trainer.test(model, loader_test)
+
+    trainer.test(model, loader_test, ckpt_path=checkpoint_callback.best_model_path)
 
     # save parameters
     lin_weights = model.linear.weight.detach().cpu().numpy()
     if model.time_summarization != "none":
         with torch.no_grad():
-            protos = model.time_summarizer(model.protos)[0]
+            protos = model.time_summarizer(model.protos)
+
+        if model.time_summarization == "lstm":
+            protos = protos[0]
     else:
         protos = model.protos
     protos = protos.detach().cpu().numpy()
@@ -288,7 +298,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--use-discriminator", type=lambda x: x == "True", default=False
     )
-    parser.add_argument("--discriminator-type", default="mlp", choices=["mlp", "conv"])
+    parser.add_argument(
+        "--discriminator-type", default="mlp", choices=["mlp", "conv", "linear"]
+    )
     parser.add_argument("--checkpoint", type=Path, default=None)
     parser.add_argument(
         "--dataset", type=str, choices=["gtzan", "nsynth", "xai_genre", "medley_solos"]
@@ -298,7 +310,7 @@ if __name__ == "__main__":
         "--time-summarization",
         type=str,
         default="none",
-        choices=["none", "lstm", "attention"],
+        choices=["none", "lstm", "transformer", "dense_res"],
     )
     parser.add_argument("--do-normalization", type=lambda x: x == "True", default=False)
 

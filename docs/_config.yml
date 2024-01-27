@@ -18,10 +18,10 @@
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
 
-title: Prototypical EnCodecMAE (PECMAE) companion site
+title: Prototype EnCodecMAE (PECMAE)
 email: pablo.alonso@upf.edu
 description: >- # this means to ignore newlines until "baseurl:"
-  Companion website for the paper ''Leveraging Pre-trained Autoencoders for Interpretable Prototype Learning of Music Audio''.
+  This is a companion website for the paper ''Leveraging Pre-trained Autoencoders for Interpretable Prototype Learning of Music Audio''.
 baseurl: /pecmae/ # the subpath of your site, e.g. /blog
 url: https://palonso.github.io # the base hostname & protocol for your site, e.g. http://example.com
 twitter_username: pablo__alonso

@@ -22,7 +22,7 @@ title: Prototype EnCodecMAE (PECMAE)
 email: pablo.alonso@upf.edu
 description: >- # this means to ignore newlines until "baseurl:"
   This is a companion website for the paper ''Leveraging Pre-trained Autoencoders for Interpretable Prototype Learning of Music Audio''.
-baseurl: /pecmae/ # the subpath of your site, e.g. /blog
+baseurl: /pecmae # the subpath of your site, e.g. /blog
 url: https://palonso.github.io # the base hostname & protocol for your site, e.g. http://example.com
 twitter_username: pablo__alonso
 github_username: palonso
@@ -34,7 +34,7 @@ plugins:
 toc:
   enabled: true
   h_min: 1
-  h_max: 3
+  h_max: 2
 # Exclude from processing.
 # The following items will not be processed, by default.
 # Any item listed under the `exclude:` key here will be automatically added to

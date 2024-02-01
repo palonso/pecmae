@@ -8,6 +8,8 @@ permalink: /gtzan/
 
 ## Baselines
 
+Our baselines consist on random samples from the training set of GTZAN and prototypes obtained with the [APNet](https://github.com/pzinemanas/APNet) model.
+
 |---|---|---|
 |class | dataset sample | APNet |
 |---|---|---|
@@ -25,6 +27,9 @@ permalink: /gtzan/
 
 ## Our models
 
+We show the results obtained with PECMAE-3 (3 prototypes per target class).
+For each class, we sonify two of the prototypes.
+
 |---|---|---|
 |class | PECMAE-3 (prototype 0) | PECMAE-3 (prototype 1) |
 |---|---|---|
@@ -41,8 +46,16 @@ permalink: /gtzan/
 |---|---|---|
 
 
+### Prototype-class connections
+In PECMAE, prototypes are linearly connected to the classification layer.
+The following plot shows the weights learned for these connections.
+Certain prototypes have a slightly positive correlation with related classes.
+For example, `rock` and `metal`.
+
+![](/pecmae/assets/images/GTZAN_lin_weights.png)
+
 ## 10-second autoencoder
-Results obtainer with an autoencoder with a 10-second context:
+Results obtainer with an autoencoder with a 10-second context.
 
 |---|---|
 |class | PECMAE-5 (10s) |

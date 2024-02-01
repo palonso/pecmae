@@ -8,6 +8,8 @@ permalink: /medleysolosdb/
 
 ## Baselines
 
+Our baselines consist on random samples from the training set of the Medley-solos-DB dataset and prototypes obtained with the [APNet](https://github.com/pzinemanas/APNet) model.
+
 |---|---|---|
 |class | dataset sample | APNet |
 |---|---|---|
@@ -23,6 +25,9 @@ permalink: /medleysolosdb/
 
 ## Our models
 
+We show the results obtained with PECMAE-3 (3 prototypes per target class).
+For each class, we sonify two of the prototypes.
+
 |---|---|---|
 |class | PECMAE-3 (prototype 0) | PECMAE-3 (prototype 1) |
 |---|---|---|
@@ -35,3 +40,11 @@ permalink: /medleysolosdb/
 | trumpet | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/medley_solos_db/pecmae-3/v489_trumpet_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/medley_solos_db/pecmae-3/v489_trumpet_n1_gs1.wav?" controls preload> |
 | violin | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/medley_solos_db/pecmae-3/v489_violin_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/medley_solos_db/pecmae-3/v489_violin_n1_gs1.wav?" controls preload> |
 |---|---|---|
+
+### Prototype-class connections
+In PECMAE, prototypes are linearly connected to the classification layer.
+The following plot shows the weights learned for these connections.
+Note that certain prototypes may have a positive correlation with related classes.
+For example, `flute` and `clarinet`.
+
+![](/pecmae/assets/images/Medley-Solos-DB_lin_weights.png)

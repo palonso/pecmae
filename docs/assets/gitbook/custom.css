@@ -1,0 +1,8 @@
+---
+---
+
+@import "{{ site.theme }}";
+
+.page-inner {
+    max-width: 1000px;
+}

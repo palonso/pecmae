@@ -6,3 +6,7 @@
 .page-inner {
     max-width: 1000px;
 }
+
+.markdown-section table th {
+  text-align: center;
+}

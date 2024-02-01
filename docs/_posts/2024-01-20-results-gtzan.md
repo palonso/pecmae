@@ -5,6 +5,7 @@ permalink: /gtzan/
 ---
 
 
+
 ## Baselines
 
 |---|---|---|
@@ -14,7 +15,7 @@ permalink: /gtzan/
 | classical | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/samples/classical.00000.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/apnet/01_classical.wav?" controls preload></audio> |
 | country | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/samples/country.00000.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/apnet/02_country.wav?" controls preload></audio> |
 | disco | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/samples/disco.00000.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/apnet/03_disco.wav?" controls preload></audio> |
-| hip-hop | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/samples/hip-hop.00000.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/apnet/04_hip-hop.wav?" controls preload></audio> |
+| hip-hop | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/samples/hiphop.00000.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/apnet/04_hip-hop.wav?" controls preload></audio> |
 | jazz | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/samples/jazz.00000.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/apnet/05_jazz.wav?" controls preload></audio> |
 | metal | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/samples/metal.00000.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/apnet/06_metal.wav?" controls preload></audio> |
 | pop | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/samples/pop.00000.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/apnet/07_pop.wav?" controls preload></audio> |
@@ -40,6 +41,7 @@ permalink: /gtzan/
 |---|---|---|
 
 
+## 10-second autoencoder
 Results obtainer with an autoencoder with a 10-second context:
 
 |---|---|

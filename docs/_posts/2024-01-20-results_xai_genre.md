@@ -5,11 +5,7 @@ permalink: /xaigenre/
 ---
 
 
-[Home](/pecmae/)
-
-### XAI-Genre
-
-#### Baselines
+## Baselines
 
 |---|---|---|
 |class | dataset sample | APNet |
@@ -40,9 +36,7 @@ permalink: /xaigenre/
 | swing | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/xai_genre/samples/swing.mp3?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/xai_genre/apnet/116_swing.wav?" controls preload></audio> |
 |---|---|---|
 
-#### Our models
-
-![My image Name](/assets/images/XAI-Genre_lin_weights.png)
+## Our models
 
 
 |---|---|---|

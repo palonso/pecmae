@@ -5,11 +5,8 @@ permalink: /medleysolosdb/
 ---
 
 
-[Home](/pecmae/)
 
-### Medley-Solos-DB
-
-#### Baselines
+## Baselines
 
 |---|---|---|
 |class | dataset sample | APNet |
@@ -24,7 +21,7 @@ permalink: /medleysolosdb/
 | violin | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/medley_solos_db/samples/Medley-solos-DB_training-7_0025e852-0a5c-54d5-fe8d-c9aabd72ff4a.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/medley_solos_db/apnet/34_violin.wav?" controls preload></audio> |
 |---|---|---|
 
-#### Our models
+## Our models
 
 |---|---|---|
 |class | PECMAE-3 (prototype 0) | PECMAE-3 (prototype 1) |

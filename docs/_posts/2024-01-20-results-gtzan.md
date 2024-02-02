@@ -31,6 +31,9 @@ Our baselines consist on random samples from the training set of GTZAN and proto
 
 ## Our models
 
+
+```NOTE (2024/02/02): By mistake we duplicated the links for prototypes 0 and 1, and they sounded identical. Fixed now```
+
 We show the results obtained with PECMAE-3 (3 prototypes per target class).
 For each class, we sonify two of the prototypes.
 
@@ -39,16 +42,16 @@ For each class, we sonify two of the prototypes.
 |---|---|---|
 |class | PECMAE-3 (prototype 0) | PECMAE-3 (prototype 1) |
 |---|---|---|
-| blues | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_blu_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_blu_n0_gs1.wav?" controls preload></audio> |
-| classical | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_cla_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_cla_n0_gs1.wav?" controls preload></audio> |
-| country | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_cou_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_cou_n0_gs1.wav?" controls preload></audio> |
-| disco | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_dis_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_dis_n0_gs1.wav?" controls preload></audio> |
-| hip-hop | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_hip_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_hip_n0_gs1.wav?" controls preload></audio> |
-| jazz | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_jaz_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_jaz_n0_gs1.wav?" controls preload></audio> |
-| metal | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_met_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_met_n0_gs1.wav?" controls preload></audio> |
-| pop | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_pop_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_pop_n0_gs1.wav?" controls preload></audio> |
-| reggae | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_reg_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_reg_n0_gs1.wav?" controls preload></audio> |
-| rock | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_roc_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_roc_n0_gs1.wav?" controls preload></audio> |
+| blues | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_blu_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_blu_n1_gs1.wav?" controls preload></audio> |
+| classical | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_cla_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_cla_n1_gs1.wav?" controls preload></audio> |
+| country | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_cou_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_cou_n1_gs1.wav?" controls preload></audio> |
+| disco | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_dis_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_dis_n1_gs1.wav?" controls preload></audio> |
+| hip-hop | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_hip_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_hip_n1_gs1.wav?" controls preload></audio> |
+| jazz | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_jaz_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_jaz_n1_gs1.wav?" controls preload></audio> |
+| metal | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_met_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_met_n1_gs1.wav?" controls preload></audio> |
+| pop | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_pop_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_pop_n1_gs1.wav?" controls preload></audio> |
+| reggae | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_reg_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_reg_n1_gs1.wav?" controls preload></audio> |
+| rock | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_roc_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_roc_n1_gs1.wav?" controls preload></audio> |
 |---|---|---|
 
 </div>

@@ -10,6 +10,8 @@ permalink: /medleysolosdb/
 
 Our baselines consist on random samples from the training set of the Medley-solos-DB dataset and prototypes obtained with the [APNet](https://github.com/pzinemanas/APNet) model.
 
+<div class="table-wrapper" markdown="block">
+
 |---|---|---|
 |class | dataset sample | APNet |
 |---|---|---|
@@ -23,10 +25,14 @@ Our baselines consist on random samples from the training set of the Medley-solo
 | violin | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/medley_solos_db/samples/Medley-solos-DB_training-7_0025e852-0a5c-54d5-fe8d-c9aabd72ff4a.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/medley_solos_db/apnet/34_violin.wav?" controls preload></audio> |
 |---|---|---|
 
+</div>
+
 ## Our models
 
 We show the results obtained with PECMAE-3 (3 prototypes per target class).
 For each class, we sonify two of the prototypes.
+
+<div class="table-wrapper" markdown="block">
 
 |---|---|---|
 |class | PECMAE-3 (prototype 0) | PECMAE-3 (prototype 1) |
@@ -40,6 +46,8 @@ For each class, we sonify two of the prototypes.
 | trumpet | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/medley_solos_db/pecmae-3/v505_trumpet_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/medley_solos_db/pecmae-3/v505_trumpet_n1_gs1.wav?" controls preload> |
 | violin | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/medley_solos_db/pecmae-3/v505_violin_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/medley_solos_db/pecmae-3/v505_violin_n1_gs1.wav?" controls preload> |
 |---|---|---|
+
+</div>
 
 ### Prototype-class connections
 In PECMAE, prototypes are linearly connected to the classification layer.

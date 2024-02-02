@@ -10,6 +10,8 @@ permalink: /gtzan/
 
 Our baselines consist on random samples from the training set of GTZAN and prototypes obtained with the [APNet](https://github.com/pzinemanas/APNet) model.
 
+<div class="table-wrapper" markdown="block">
+
 |---|---|---|
 |class | dataset sample | APNet |
 |---|---|---|
@@ -25,10 +27,14 @@ Our baselines consist on random samples from the training set of GTZAN and proto
 | rock | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/samples/rock.00000.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/apnet/09_rock.wav?" controls preload></audio> |
 |---|---|---|
 
+</div>
+
 ## Our models
 
 We show the results obtained with PECMAE-3 (3 prototypes per target class).
 For each class, we sonify two of the prototypes.
+
+<div class="table-wrapper" markdown="block">
 
 |---|---|---|
 |class | PECMAE-3 (prototype 0) | PECMAE-3 (prototype 1) |
@@ -45,6 +51,7 @@ For each class, we sonify two of the prototypes.
 | rock | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_roc_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-3/v506_roc_n0_gs1.wav?" controls preload></audio> |
 |---|---|---|
 
+</div>
 
 ### Prototype-class connections
 In PECMAE, prototypes are linearly connected to the classification layer.
@@ -56,6 +63,8 @@ For example, `rock` and `metal`.
 
 ## 10-second autoencoder
 Results obtainer with an autoencoder with a 10-second context.
+
+<div class="table-wrapper" markdown="block">
 
 |---|---|
 |class | PECMAE-5 (10s) |
@@ -71,3 +80,5 @@ Results obtainer with an autoencoder with a 10-second context.
 | reggae | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-5-10s/v533_reg_n0_gs1.wav?" controls preload></audio> |
 | rock | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/gtzan/pecmae-5-10s/v533_roc_n0_gs1.wav?" controls preload></audio> |
 |---|---|
+
+</div>

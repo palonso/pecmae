@@ -9,6 +9,8 @@ permalink: xaigenre/
 
 Our baselines consist on random samples from the training set of the XAI-Genre and prototypes obtained with the [APNet](https://github.com/pzinemanas/APNet) model.
 
+<div class="table-wrapper" markdown="block">
+
 |---|---|---|
 |class | dataset sample | APNet |
 |---|---|---|
@@ -38,10 +40,14 @@ Our baselines consist on random samples from the training set of the XAI-Genre a
 | swing | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/xai_genre/samples/swing.mp3?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/xai_genre/apnet/116_swing.wav?" controls preload></audio> |
 |---|---|---|
 
+</div>
+
 ## Our models
 
 We show the results obtained with PECMAE-3 (3 prototypes per target class).
 For each class, we sonify two of the prototypes.
+
+<div class="table-wrapper" markdown="block">
 
 |---|---|---|
 |class | PECMAE-3 (prototype 0) | PECMAE-3 (prototype 1) |
@@ -72,6 +78,7 @@ For each class, we sonify two of the prototypes.
 | swing | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/xai_genre/pecmae-3/v507_swing_n0_gs1.wav?" controls preload></audio> | <audio src="https://raw.githubusercontent.com/palonso/pecmae-samples/main/xai_genre/pecmae-3/v507_swing_n1_gs1.wav?" controls preload> |
 |---|---|---|
 
+</div>
 
 ### Prototype-class connections
 In PECMAE, prototypes are linearly connected to the classification layer.

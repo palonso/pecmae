@@ -1,11 +1,7 @@
 from argparse import ArgumentParser
 from pathlib import Path
 
-import pytorch_lightning as L
 import numpy as np
-import torch
-import torchmetrics
-import matplotlib
 
 matplotlib.use("Agg")
 import seaborn as sns

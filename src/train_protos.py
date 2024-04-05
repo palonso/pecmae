@@ -317,7 +317,7 @@ class ZinemaNet(L.LightningModule):
         if self.time_summarization == "dense_res":
             self.time_summarizer = DenseRes(self.feat_dim)
 
-        self.aggregated_y_hat_test = defaultdict(list)
+        self.aggregated_y_hat = defaultdict(list)
         self.filename_to_label = defaultdict(list)
 
     def training_step(self, batch, batch_idx, split="train"):
@@ -367,9 +367,9 @@ class ZinemaNet(L.LightningModule):
         y_hat = self.linear(similarity)
         acc = self.accuracy(y_hat, y)
 
-        if split == "test":
+        if split in ("val", "test"):
             for f_sample, y_hat_sample, y_sample in zip(f, y_hat, y):
-                self.aggregated_y_hat_test[f_sample].append(
+                self.aggregated_y_hat[f_sample].append(
                     y_hat_sample.detach().cpu().numpy()
                 )
                 if f_sample not in self.filename_to_label:
@@ -507,10 +507,26 @@ class ZinemaNet(L.LightningModule):
 
         np.save(protos_file, protos)
 
+    def on_validation_epoch_end(self):
+        y = []
+        y_hat = []
+        for f, y_hat_aggregated in self.aggregated_y_hat.items():
+            y_hat_aggregated = np.array(y_hat_aggregated)
+            y_hat.append(np.argmax(np.average(y_hat_aggregated, axis=0), axis=0))
+            y.append(self.filename_to_label[f])
+
+        y_hat = np.array(y_hat)
+        y = np.array(y)
+
+        acc = self.accuracy(torch.Tensor(y_hat), torch.Tensor(y))
+        self.log(f"val_acc_aggregated", acc, batch_size=self.batch_size)
+
+        self.aggregated_y_hat = defaultdict(list)
+
     def on_test_end(self):
         y = []
         y_hat = []
-        for f, y_hat_aggregated in self.aggregated_y_hat_test.items():
+        for f, y_hat_aggregated in self.aggregated_y_hat.items():
             y_hat_aggregated = np.array(y_hat_aggregated)
             y_hat.append(np.argmax(np.average(y_hat_aggregated, axis=0), axis=0))
             y.append(self.filename_to_label[f])
@@ -647,9 +663,12 @@ def create_protos(
         protos = np.load(proto_file)
         print(f"protos loaded from {proto_file}")
         protos = torch.tensor(protos)
-        assert protos.shape == (
-            n_protos,
-            *shape,
+        assert (
+            protos.shape
+            == (
+                n_protos,
+                *shape,
+            )
         ), f"protos shape mismatch. found: {protos.shape} expected: {(n_protos, *shape)}"
 
     elif protos_init == "proto-dict":

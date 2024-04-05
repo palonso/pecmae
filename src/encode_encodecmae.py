@@ -7,7 +7,6 @@ from glob import glob
 import librosa
 import numpy as np
 import torch
-from encodec import EncodecModel
 from huggingface_hub import hf_hub_download
 from tqdm import tqdm
 import pytorch_lightning as pl
@@ -27,7 +26,13 @@ parser.add_argument(
     "--model-size",
     type=str,
     default="base",
-    choices=["base", "base_diffusion", "large", "large_diffusion"],
+    choices=[
+        "base",
+        "base_diffusion",
+        "large",
+        "large_diffusion",
+        "large_diffusion_10s",
+    ],
 )
 parser.add_argument("--format", type=str, default="wav", choices=["wav", "mp3"])
 parser.add_argument("--device", type=str, default="cuda:0")
@@ -37,7 +42,7 @@ args = parser.parse_args()
 device = args.device
 model_size = args.model_size
 
-if model_size in ("base_diffusion", "large_diffusion"):
+if model_size in ("base_diffusion", "large_diffusion", "large_diffusion_10s"):
 
     class TransformerCLSEncoder(torch.nn.Module):
         def __init__(
@@ -186,6 +191,7 @@ if model_size in ("base_diffusion", "large_diffusion"):
         model_filename = (
             "ae/diffusion_encodec_transformer_4L8Lclsx1_punc01_250ksteps.ckpt"
         )
+        num_encoder_layers = 4
         diffusion_steps = 35
         guidance_strength = 1
         win_size = 24000
@@ -195,10 +201,19 @@ if model_size in ("base_diffusion", "large_diffusion"):
         model_filename = (
             "ae/diffusion_encodec_transformer_4L8Lclsx1_punc01_330ksteps.ckpt"
         )
+        num_encoder_layers = 4
         diffusion_steps = 40
         guidance_strength = 1
         win_size = 24000 * 4
         hop_size = 24000 * 4
+
+    elif model_size == "large_diffusion_10s":
+        model_filename = "ae/diffusion-10s-2L8L-jamendofma-285k.ckpt"
+        num_encoder_layers = 2
+        diffusion_steps = 40
+        guidance_strength = 1
+        win_size = 24000 * 10
+        hop_size = 24000 * 10
 
     ckpt_file = hf_hub_download(
         repo_id="lpepino/encodecmae-base",
@@ -209,6 +224,7 @@ if model_size in ("base_diffusion", "large_diffusion"):
         num_cls_tokens=1,
         signal_to_generate="wav_features",
         signal_dim=128,
+        num_encoder_layers=num_encoder_layers,
         num_denoiser_layers=8,
     )
     ecmae.load_state_dict(torch.load(ckpt_file, map_location=device)["state_dict"])
@@ -237,7 +253,7 @@ for audio_file in tqdm(audio_files):
 
     xorig, fs = librosa.core.load(audio_file, sr=24000)
 
-    if model_size in ("base_diffusion", "large_diffusion"):
+    if model_size in ("base_diffusion", "large_diffusion", "large_diffusion_10s"):
         ecmae_feature_stack = []
         for i in range(0, max(len(xorig) - win_size, 1), hop_size):
             x = {

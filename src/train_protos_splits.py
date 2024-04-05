@@ -223,7 +223,7 @@ def train(
 
     logger.log_hyperparams(hyperparams)
 
-    checkpoint_callback = ModelCheckpoint(monitor="val_class_loss")
+    checkpoint_callback = ModelCheckpoint(monitor="val_acc_aggregated", mode="max")
 
     trainer = L.Trainer(
         max_steps=total_steps,

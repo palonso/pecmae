@@ -1,2 +1,12 @@
 lightning_logs/
 codes/
+feat*/
+tb_logs/
+out_data/
+*.pyc
+*.vscode
+*.swp
+*.pk
+*.yaml
+*.json
+*.sh

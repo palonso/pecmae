@@ -35,4 +35,3 @@ If results, insights, or code developed within this project are useful for you, 
 ## Acknowledgments
 
 This work has been supported by the [Musical AI project](https://www.upf.edu/web/mtg/ongoing-projects/-/asset_publisher/DneGVrJZ7tmE/content/id/235850570/) - ``PID2019-111403GB-I00/AEI/10.13039/501100011033``, funded by the [Spanish Ministerio de Ciencia e Innovación](https://www.ciencia.gob.es/en/) and the [Agencia Estatal de Investigación](https://www.aei.gob.es/).
-

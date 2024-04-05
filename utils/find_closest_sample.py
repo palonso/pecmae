@@ -7,76 +7,11 @@ import numpy as np
 from tqdm import tqdm
 from scipy.spatial import distance
 
-from train_protos import create_protos
+from train_protos import create_protos, dataset_generator, trim_embeddings
+from train_protos_iterable import label2id, get_labelmap
+from labelmaps import xaigenre_id2label, gtzan_id2label, nsynth_id2label
 
 seed = 42
-
-
-def dataset_generator(metadata_file: Path, data_dir: Path):
-    with open(metadata_file, "r") as f:
-        metadata = yaml.load(f, Loader=yaml.SafeLoader)
-    for k, v in metadata["groundTruth"].items():
-        feature_file = (data_dir / k).with_suffix(".npy")
-        feature = np.load(feature_file)
-
-        yield {
-            "feature": feature,
-            "label": v,
-            "filename": k,
-        }
-
-
-def trim_embeddings(examples: list, timestamps: int = 300, mode: str = "middle"):
-    features = []
-    labels = []
-    filenames = []
-
-    for feature, label, filename in zip(
-        examples["feature"], examples["label"], examples["filename"]
-    ):
-        feature = np.array(feature).squeeze()
-
-        if mode == "middle":
-            middle = feature.shape[0] // 2
-            feature = feature[middle - timestamps // 2 : middle + timestamps // 2, :]
-        elif mode == "random":
-            start = np.random.randint(0, feature.shape[0] - timestamps)
-            feature = feature[start : start + timestamps, :]
-        elif mode == "beginning":
-            feature = feature[:timestamps, :]
-        elif mode == "all":
-            n_chunks = feature.shape[0] // timestamps
-            feature = feature[: n_chunks * timestamps, :].reshape(
-                -1, timestamps, feature.shape[-1]
-            )
-            labels.extend([label] * n_chunks)
-            filenames.extend([filename] * n_chunks)
-        else:
-            raise ValueError(f"mode {mode} not supported")
-
-        features.append(feature)
-
-    if mode == "all":
-        if len(features) == 1:
-            features = features[0].tolist()
-        else:
-            features = np.vstack(features).tolist()
-        examples["label"] = labels
-        examples["filename"] = filenames
-
-    examples["feature"] = features
-    return examples
-
-
-def label_to_idx(examples: list):
-    label_set = list(set(examples["label"]))
-    label_set.sort()
-    for i, label in enumerate(label_set):
-        print(f"label {label}: {i}")
-    label_map = {label: i for i, label in enumerate(label_set)}
-    examples["label"] = [label_map[label] for label in examples["label"]]
-
-    return examples
 
 
 def find_closest_sample(
@@ -91,14 +26,26 @@ def find_closest_sample(
     timestamps: int = 300,
     trim_mode: str = "middle",
     temp: float = 0.1,
+    dataset: str = None,
 ):
+    if dataset == "gtzan":
+        label_map = gtzan_id2label
+    elif dataset == "nsynth":
+        label_map = nsynth_id2label
+    elif dataset == "xai_genre":
+        label_map = xaigenre_id2label
+    else:
+        raise ValueError(f"Unknown dataset: {dataset}")
+
     print("creating dataset")
     ds = Dataset.from_generator(
         dataset_generator,
-        writer_batch_size=500,
+        writer_batch_size=100,
         gen_kwargs={
             "metadata_file": metadata_file,
             "data_dir": data_dir,
+            "dataset": dataset,
+            "seed": seed,
         },
     )
 
@@ -112,8 +59,11 @@ def find_closest_sample(
         fn_kwargs={"timestamps": timestamps, "mode": trim_mode},
     )
 
-    print("label encoding")
-    ds = ds.map(label_to_idx, batched=True, batch_size=2000, writer_batch_size=500)
+    ds = ds.map(
+        label2id,
+        batched=True,
+        fn_kwargs={"labelmap": get_labelmap(dataset)},
+    )
 
     ds = ds.with_format("numpy")
 
@@ -128,7 +78,9 @@ def find_closest_sample(
     feat_dim = ds_val["feature"][0].shape[1]
     print(f"time_dim: {time_dim}, feat_dim: {feat_dim}")
 
-    labels = set(ds_val["label"])
+    labels = list(label_map.values())
+    labels.sort()
+
     n_labels = len(labels)
     n_protos = n_labels * n_protos_per_label
     print(f"n_labels: {n_labels}, n_protos: {n_protos}")
@@ -179,6 +131,7 @@ if __name__ == "__main__":
     parser.add_argument("--timestamps", type=int, default=300)
     parser.add_argument("--trim-mode", type=str, default="middle")
     parser.add_argument("--temp", type=float, default=0.1)
+    parser.add_argument("--dataset", type=str, choices=["gtzan", "nsynth", "xai_genre"])
 
     args = parser.parse_args()
     find_closest_sample(
@@ -193,4 +146,5 @@ if __name__ == "__main__":
         timestamps=args.timestamps,
         trim_mode=args.trim_mode,
         temp=args.temp,
+        dataset=args.dataset,
     )

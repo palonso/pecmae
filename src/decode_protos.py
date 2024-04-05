@@ -41,7 +41,7 @@ parser.add_argument(
     "--model-size",
     type=str,
     default="base",
-    choices=["base", "base_diffusion", "large", "large_diffusion"],
+    choices=["base", "base_diffusion", "large", "large_diffusion", "large_diffusion_10s"],
 )
 parser.add_argument("--device", type=str, default="cuda:1")
 parser.add_argument("--output-dir", type=Path, default="out_data/decoded/")
@@ -134,7 +134,7 @@ elif model_size == "large":
     ecmae2ec.eval()
 
 
-elif model_size in ("base_diffusion", "large_diffusion"):
+elif model_size in ("base_diffusion", "large_diffusion", "large_diffusion_10s"):
 
     class TransformerCLSEncoder(torch.nn.Module):
         def __init__(
@@ -294,6 +294,13 @@ elif model_size in ("base_diffusion", "large_diffusion"):
         model_filename = (
             "ae/diffusion_encodec_transformer_4L8Lclsx1_punc01_330ksteps.ckpt"
         )
+    elif model_size == "large_diffusion_10s":
+        num_encoder_layers = 2
+        diffusion_steps = 40
+        guidance_strength = 1
+        win_size = 24000 * 10
+        hop_size = 24000 * 10
+        model_filename ='ae/diffusion-10s-2L8L-jamendofma-285k.ckpt'
 
     ckpt_file = hf_hub_download(
         repo_id="lpepino/encodecmae-base",
@@ -333,7 +340,7 @@ for i_proto in range(learned_protos.shape[0]):
     print(f"class {label_map[label_i]}")
     encmae_feats = torch.tensor(learned_protos[i_proto], device=device).unsqueeze(1)
 
-    if model_size in ("base_diffusion", "large_diffusion"):
+    if model_size in ("base_diffusion", "large_diffusion", "large_diffusion_10s"):
         audio = np.zeros((encmae_feats.shape[0] - 1) * hop_size + win_size)
 
         # sample_feats = encmae_feats[0].unsqueeze(0)

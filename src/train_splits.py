@@ -14,7 +14,7 @@ from train_protos import (
     get_labelmap,
     label2id,
 )
-from train import MLP
+from models import MLP
 
 
 def norm(sample, mean, std):
@@ -116,16 +116,24 @@ def train(
         ds_train = ds_split["train"]
         ds_val = ds_split["test"]
 
-    ds_test, _, _ = get_dataset(
-        metadata_file_test,
-        data_dir_test,
-        dataset,
-        1,
-        trim_mode,
-        do_normalization=do_normalization,
-        ds_mean=ds_mean,
-        ds_std=ds_std,
-    )
+    if metadata_file_test:
+        ds_test, _, _ = get_dataset(
+            metadata_file_test,
+            data_dir_test,
+            dataset,
+            1,
+            trim_mode,
+            do_normalization=do_normalization,
+            ds_mean=ds_mean,
+            ds_std=ds_std,
+        )
+    else:
+        print(
+            "warning: test metadata file not detected. using 0.15 of train as test split"
+        )
+        ds_split = ds_train.train_test_split(test_size=0.15)
+        ds_train = ds_split["train"]
+        ds_test = ds_split["test"]
 
     time_dim = 1
     feat_dim = ds_val[0]["feature"].shape[-1]

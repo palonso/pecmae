@@ -126,3 +126,16 @@ medley_solos_label2id = {
     "trumpet": 6,
     "violin": 7,
 }
+
+
+def get_labelmap(dataset: str):
+    if dataset == "gtzan":
+        return gtzan_label2id
+    elif dataset == "nsynth":
+        return nsynth_label2id
+    elif dataset == "xai_genre":
+        return xaigenre_label2id
+    elif dataset == "medley_solos":
+        return medley_solos_label2id
+    else:
+        raise ValueError(f"dataset {dataset} not supported")

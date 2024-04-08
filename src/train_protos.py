@@ -1,646 +1,21 @@
-import csv
-import pickle as pk
-import random
 from argparse import ArgumentParser
-from collections import defaultdict
-
-# from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pytorch_lightning as L
 import numpy as np
 import torch
-import torchmetrics
 import yaml
 from datasets import Dataset
 from pytorch_lightning.loggers import TensorBoardLogger
-from torch import optim, nn, utils
+from torch import utils
 from sklearn.cluster import KMeans
-from sklearn.metrics import classification_report
 
-from similarities import BilinearSimilarity, InfoNCE
-from labelmaps import (
-    gtzan_label2id,
-    nsynth_label2id,
-    xaigenre_label2id,
-    medley_solos_label2id,
-)
-
-
-def get_labelmap(dataset: str):
-    if dataset == "gtzan":
-        return gtzan_label2id
-    elif dataset == "nsynth":
-        return nsynth_label2id
-    elif dataset == "xai_genre":
-        return xaigenre_label2id
-    elif dataset == "medley_solos":
-        return medley_solos_label2id
-    else:
-        raise ValueError(f"dataset {dataset} not supported")
-
-
-def label2id(examples: dict, labelmap: dict):
-    if isinstance(examples["label"], list):
-        examples["label"] = [labelmap[label] for label in examples["label"]]
-    else:
-        examples["label"] = labelmap[examples["label"]]
-    return examples
-
-
-def dataset_generator(
-    metadata_file: Path,
-    data_dir: Path,
-    dataset: str,
-    seed: int = None,
-):
-    if dataset in ("nsynth"):
-        with open(metadata_file, "r") as f:
-            metadata = yaml.load(f, Loader=yaml.SafeLoader)
-        for k, v in metadata["groundTruth"].items():
-            feature_file = (data_dir / k).with_suffix(".npy")
-            feature = np.load(feature_file)
-
-            yield {
-                "feature": feature,
-                "label": v,
-                "filename": k,
-            }
-
-    elif dataset in ("xai_genre", "medley_solos", "gtzan"):
-        with open(metadata_file, "r") as f:
-            metadata = csv.reader(f, delimiter="\t")
-            metadata = list(metadata)
-
-            if seed:
-                random.seed(seed)
-            random.shuffle(metadata)
-
-            for genre, sid in metadata:
-                feature_file = (data_dir / sid).with_suffix(".npy")
-                if not feature_file.exists():
-                    print(f"file {feature_file} does not exist")
-                    continue
-                feature = np.load(feature_file)
-
-                yield {
-                    "feature": feature,
-                    "label": genre,
-                    "filename": sid,
-                }
-
+from labelmaps import get_labelmap
+from models import PrototypeNet
+from commons import get_dataset
 
 lambd = 1.0
-
-
-class GradReverse(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x):
-        return x.view_as(x)
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        global lambd
-        # return grad_output.neg()
-        return grad_output * -lambd
-
-
-def grad_reverse(x):
-    return GradReverse.apply(x)
-
-
-class domain_classifier_linear(nn.Module):
-    def __init__(self, input_dim=1200):
-        super(domain_classifier_linear, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 1)
-
-    def forward(self, x):
-        x = grad_reverse(x)
-        x = self.fc1(x)
-        return x
-
-
-class domain_classifier_mlp(nn.Module):
-    def __init__(self, input_dim=1200):
-        super(domain_classifier_mlp, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 32)
-        self.leaky_relu = nn.LeakyReLU()
-        self.fc2 = nn.Linear(32, 1)
-        self.drop = nn.Dropout1d(0.2)
-
-    def forward(self, x):
-        x = grad_reverse(x)
-        x = self.leaky_relu(self.drop(self.fc1(x)))
-        x = self.fc2(x)
-        return x
-
-
-class domain_classifier_conv(nn.Module):
-    def __init__(self):
-        super(domain_classifier_conv, self).__init__()
-
-        self.cv1 = torch.nn.Conv2d(1, 16, 5)
-        self.mp1 = torch.nn.MaxPool2d(2)
-        self.cv2 = torch.nn.Conv2d(16, 16, 5)
-        self.mp2 = torch.nn.MaxPool2d(2)
-        self.cv3 = torch.nn.Conv2d(16, 32, 5)
-        self.mp3 = torch.nn.MaxPool2d(4)
-        self.cv4 = torch.nn.Conv2d(32, 32, 5)
-        self.mp4 = torch.nn.MaxPool2d(4)
-        self.ln1 = torch.nn.Linear(960, 1)
-
-        self.leaky_relu = nn.LeakyReLU()
-        self.drop = nn.Dropout1d(0.25)
-
-    def forward(self, x):
-        x = x.unsqueeze(1)
-        x = grad_reverse(x)
-
-        x = self.leaky_relu(self.mp1(self.cv1(x)))
-        x = self.leaky_relu(self.mp2(self.cv2(x)))
-        x = self.leaky_relu(self.mp3(self.cv3(x)))
-        x = self.leaky_relu(self.mp4(self.cv4(x)))
-        x = x.flatten(1)
-
-        x = self.leaky_relu(self.drop(self.ln1(x)))
-
-        return x
-
-
-class DenseRes(nn.Module):
-    def __init__(self, feat_dim, dropout=0.2):
-        super(DenseRes, self).__init__()
-
-        self.feat_dim = feat_dim
-        self.dropout = dropout
-
-        self.bn1 = nn.BatchNorm1d(self.feat_dim)
-        self.ln1 = nn.Linear(self.feat_dim, self.feat_dim)
-        self.relu = nn.ReLU()
-        self.bn2 = nn.BatchNorm1d(self.feat_dim, self.feat_dim)
-        self.ln2 = nn.Linear(self.feat_dim, self.feat_dim)
-
-        self.drop = nn.Dropout1d(self.dropout)
-
-    def forward(self, x):
-        x = x.flatten(1)
-
-        y = self.relu(self.ln1(x))
-        x = self.bn1(x + y)
-        x = self.drop(x)
-        y = self.relu(self.ln2(x))
-        x = self.bn2(x + y)
-
-        x.unsqueeze(1)
-
-        return x
-
-
-class ZinemaNet(L.LightningModule):
-    def __init__(
-        self,
-        protos: np.array,
-        time_dim: int = 300,
-        feat_dim: int = 768,
-        n_labels: int = 10,
-        batch_size: int = 32,
-        total_steps: int = 1000,
-        weight_decay: float = 1e-4,
-        max_lr: float = 1e-3,
-        temp: float = 0.1,
-        alpha: float = 0.5,
-        proto_loss: str = "l2",
-        proto_loss_samples: str = "any_sample",
-        use_discriminator: bool = False,
-        discriminator_type: str = "mlp",
-        distance: str = "l2",
-        freeze_protos: bool = False,
-        time_summarization: str = "none",
-        do_normalization: bool = False,
-        ds_mean: float = None,
-        ds_std: float = None,
-        labels: list = None,
-    ):
-        super().__init__()
-
-        self.time_dim = time_dim
-        self.feat_dim = feat_dim
-        self.n_labels = n_labels
-        self.protos_weights = protos
-        self.batch_size = batch_size
-        self.total_steps = total_steps
-        self.weight_decay = weight_decay
-        self.max_lr = max_lr
-        self.temp = temp
-        self.alpha = alpha
-        self.proto_loss = proto_loss
-        self.proto_loss_samples = proto_loss_samples
-        self.use_discriminator = use_discriminator
-        self.discriminator_type = discriminator_type
-        self.distance = distance
-        self.save_protos_each_n_steps = 50000
-        self.time_summarization = time_summarization
-        self.do_normalization = do_normalization
-        self.ds_mean = ds_mean
-        self.ds_std = ds_std
-        self.labels = labels
-
-        self.n_protos = self.protos_weights.shape[0]
-        self.n_protos_per_label = self.n_protos // self.n_labels
-
-        self.protos = nn.Parameter(
-            data=torch.tensor(self.protos_weights), requires_grad=not freeze_protos
-        )
-        self.linear = nn.Linear(self.n_protos, self.n_labels)
-
-        # init linear weights to direct connection to the class
-        lin_weights = np.hstack(
-            [[i] * self.n_protos_per_label for i in range(self.n_labels)]
-        )
-        lin_weights = torch.nn.functional.one_hot(torch.tensor(lin_weights))
-        self.linear.weight = nn.Parameter(
-            data=lin_weights.T.float(), requires_grad=True
-        )
-
-        self.info_nce = InfoNCE(negative_mode=None)
-        self.xent = nn.CrossEntropyLoss()
-
-        self.accuracy = torchmetrics.classification.Accuracy(
-            task="multiclass",
-            num_classes=n_labels,
-        )
-
-        if self.use_discriminator:
-            if self.discriminator_type == "conv":
-                self.discriminator = domain_classifier_conv()
-
-            elif self.discriminator_type == "mlp":
-                self.discriminator = domain_classifier_mlp(
-                    input_dim=self.time_dim * self.feat_dim
-                )
-            elif self.discriminator_type == "linear":
-                self.discriminator = domain_classifier_linear(
-                    input_dim=self.time_dim * self.feat_dim
-                )
-            else:
-                raise ValueError(
-                    f"discriminator type {self.discriminator_type} not supported"
-                )
-
-            self.bxent = nn.BCEWithLogitsLoss()
-            self.accuracy_binary = torchmetrics.classification.Accuracy(task="binary")
-
-        # to use the scheduler
-        self.automatic_optimization = False
-
-        self.i = 0
-
-        if self.time_summarization == "lstm":
-            self.time_summarizer = nn.LSTM(
-                input_size=self.feat_dim,
-                hidden_size=self.feat_dim,
-                num_layers=2,
-                dropout=0.2,
-                batch_first=True,
-            )
-
-        if self.time_summarization == "transformer":
-            encoder_layer = nn.TransformerEncoderLayer(
-                d_model=self.feat_dim,
-                nhead=1,
-                batch_first=True,
-            )
-            self.time_summarizer = nn.TransformerEncoder(
-                encoder_layer=encoder_layer,
-                num_layers=1,
-            )
-        if self.time_summarization == "dense_res":
-            self.time_summarizer = DenseRes(self.feat_dim)
-
-        self.aggregated_y_hat = defaultdict(list)
-        self.filename_to_label = defaultdict(list)
-
-    def training_step(self, batch, batch_idx, split="train"):
-        x = batch["feature"]
-        y = batch["label"]
-        f = batch["filename"]
-
-        # flatten time and embedding dimension
-        if self.time_summarization == "none":
-            x = x.flatten(1)
-            protos = self.protos.flatten(1)
-
-        elif self.time_summarization == "lstm":
-            protos = self.time_summarizer(self.protos)[0].flatten(1)
-            x = x.flatten(1)
-        elif self.time_summarization in ("transformer", "dense_res"):
-            protos = self.time_summarizer(self.protos).flatten(1)
-            x = x.flatten(1)
-        else:
-            raise ValueError(
-                f"time summarization {self.time_summarization} not supported"
-            )
-
-        optimizers = self.optimizers()
-        lr_schedulers = self.lr_schedulers()
-
-        optimizer_c = optimizers
-        lr_scheduler_c = lr_schedulers
-
-        if split == "train":
-            optimizer_c.zero_grad()
-
-        if self.proto_loss == "info_nce":
-            similarity = self.info_nce(x, protos, output="logits")
-            distance = torch.exp(-similarity)
-        elif self.proto_loss == "l1":
-            distance = torch.mean(torch.abs((x.unsqueeze(1) - protos.unsqueeze(0))), -1)
-            similarity = torch.exp(-distance)
-        elif self.proto_loss == "l2":
-            distance = torch.mean((x.unsqueeze(1) - protos.unsqueeze(0)) ** 2, -1)
-            similarity = torch.exp(-distance)
-        else:
-            raise ValueError(f"distance {self.proto_loss} not supported")
-
-        self.log(f"{split}_distance", distance.mean(), batch_size=self.batch_size)
-
-        y_hat = self.linear(similarity)
-        acc = self.accuracy(y_hat, y)
-
-        if split in ("val", "test"):
-            for f_sample, y_hat_sample, y_sample in zip(f, y_hat, y):
-                self.aggregated_y_hat[f_sample].append(
-                    y_hat_sample.detach().cpu().numpy()
-                )
-                if f_sample not in self.filename_to_label:
-                    self.filename_to_label[f_sample] = y_sample.detach().cpu().numpy()
-
-        # classification loss
-        loss_c = self.xent(y_hat / self.temp, y)
-        # prototype loss
-
-        if self.proto_loss_samples == "all":
-            loss_p = torch.mean(torch.min(distance, dim=0).values)
-
-        elif self.proto_loss_samples == "class":
-            distance_mask = torch.inf * torch.ones_like(distance)
-            idx = torch.zeros_like(distance_mask)
-
-            for j in range(self.n_protos_per_label):
-                idx += torch.nn.functional.one_hot(
-                    y * self.n_protos_per_label + j,
-                    num_classes=distance.shape[1],
-                )
-
-            # Index with a boolean mask (similar to numpy).
-            # https://docs.scipy.org/doc/numpy-1.13.0/reference/arrays.indexing.html#boolean-array-indexing
-            idx = idx.bool()
-
-            distance_mask[idx] = distance[idx]
-
-            min_dis = torch.min(distance_mask, dim=0).values
-            min_dis_clean = min_dis[torch.where(min_dis != torch.inf)]
-
-            loss_p = torch.mean(min_dis_clean)
-
-        loss = self.alpha * loss_p + (1 - self.alpha) * loss_c
-
-        self.log(f"{split}_acc", acc, prog_bar=True, batch_size=self.batch_size)
-        self.log(f"{split}_class_loss", loss_c, batch_size=self.batch_size)
-        self.log(f"{split}_proto_loss", loss_p, batch_size=self.batch_size)
-
-        if self.use_discriminator:
-            disc_weight = 1.0
-
-            p = float(self.i) / self.total_steps
-            global lambd
-
-            lambd = disc_weight * (2.0 / (1.0 + np.exp(-10.0 * p)) - 1)
-
-            x_disc = torch.cat([x, protos], dim=0)
-            y_disc = torch.cat(
-                [
-                    torch.zeros(len(y), device=self.device),
-                    torch.ones(self.n_protos, device=self.device),
-                ],
-                dim=0,
-            )
-            y_disc = y_disc.unsqueeze(1)
-
-            if self.discriminator_type == "conv":
-                y_disc_hat = self.discriminator(
-                    x_disc.reshape(-1, self.time_dim, self.feat_dim)
-                )
-            else:
-                y_disc_hat = self.discriminator(x_disc)
-
-            loss_d = self.bxent(y_disc_hat, y_disc)
-            acc_disc = self.accuracy_binary(y_disc_hat, y_disc)
-
-            loss += loss_d
-
-            self.log(f"{split}_disc_acc", acc_disc, batch_size=self.batch_size)
-
-            if split == "train":
-                self.log("lambda", lambd, batch_size=self.batch_size)
-
-            self.log(f"{split}_disc_loss", loss_d, batch_size=self.batch_size)
-
-        if split == "train":
-            self.manual_backward(loss)
-            optimizer_c.step()
-
-            lr_scheduler_c.step()
-            self.log(
-                f"{split}_lr_class",
-                lr_scheduler_c.get_last_lr()[0],
-                batch_size=self.batch_size,
-            )
-
-            if self.i % self.save_protos_each_n_steps == 0 and self.i != 0:
-                self.save_checkpoint()
-
-        self.i += 1
-
-    def validation_step(self, batch, batch_idx):
-        self.training_step(batch, batch_idx, split="val")
-
-    def test_step(self, batch, batch_idx):
-        self.training_step(batch, batch_idx, split="test")
-
-    def configure_optimizers(self):
-        optimizer_c = optim.Adam(
-            self.parameters(),
-            weight_decay=self.weight_decay,
-        )
-        scheduler_c = optim.lr_scheduler.OneCycleLR(
-            optimizer_c,
-            max_lr=self.max_lr,
-            total_steps=self.total_steps,
-        )
-        optimizers = [
-            {"optimizer": optimizer_c, "lr_scheduler": scheduler_c},
-        ]
-
-        return optimizers
-
-    def save_checkpoint(self):
-        if self.time_summarization != "none":
-            with torch.no_grad():
-                protos = self.time_summarizer(self.protos)
-
-            if self.time_summarization == "lstm":
-                protos = protos[0]
-        else:
-            protos = self.protos
-
-        protos = protos.detach().cpu().numpy()
-
-        if self.do_normalization:
-            protos = (protos * self.ds_std * 2) + self.ds_mean
-
-        out_data_dir = Path("out_data/")
-        out_data_dir.mkdir(exist_ok=True)
-
-        protos_file = out_data_dir / f"protos_v{self.logger.version}_s{self.i}.npy"
-        print(f"saving protos to {protos_file}")
-
-        np.save(protos_file, protos)
-
-    def on_validation_epoch_end(self):
-        y = []
-        y_hat = []
-        for f, y_hat_aggregated in self.aggregated_y_hat.items():
-            y_hat_aggregated = np.array(y_hat_aggregated)
-            y_hat.append(np.argmax(np.average(y_hat_aggregated, axis=0), axis=0))
-            y.append(self.filename_to_label[f])
-
-        y_hat = np.array(y_hat)
-        y = np.array(y)
-
-        acc = self.accuracy(torch.Tensor(y_hat), torch.Tensor(y))
-        self.log(f"val_acc_aggregated", acc, batch_size=self.batch_size)
-
-        self.aggregated_y_hat = defaultdict(list)
-
-    def on_test_end(self):
-        y = []
-        y_hat = []
-        for f, y_hat_aggregated in self.aggregated_y_hat.items():
-            y_hat_aggregated = np.array(y_hat_aggregated)
-            y_hat.append(np.argmax(np.average(y_hat_aggregated, axis=0), axis=0))
-            y.append(self.filename_to_label[f])
-
-        y_hat = np.array(y_hat)
-        y = np.array(y)
-
-        print(classification_report(y, y_hat, target_names=self.labels, digits=3))
-
-
-def trim_embeddings(
-    examples: list,
-    timestamps: int = 300,
-    mode: str = "middle",
-):
-    features = []
-    labels = []
-    filenames = []
-
-    if not isinstance(examples["label"], list):
-        examples["feature"] = [examples["feature"]]
-        examples["label"] = [examples["label"]]
-        examples["filename"] = [examples["filename"]]
-
-    for feature, label, filename in zip(
-        examples["feature"], examples["label"], examples["filename"]
-    ):
-        feature = np.array(feature)
-
-        if len(feature.shape) == 3:
-            if mode == "middle":
-                middle = feature.shape[0] // 2
-                feature = feature[middle]
-            elif mode == "random":
-                index = np.random.randint(0, feature.shape[0])
-                feature = feature[index]
-            elif mode == "beginning":
-                feature = feature[0]
-            elif mode == "all":
-                labels.extend([label] * feature.shape[0])
-                filenames.extend([filename] * feature.shape[0])
-            else:
-                raise ValueError(f"mode {mode} not supported")
-
-        elif len(feature.shape) == 2:
-            if mode == "middle":
-                middle = feature.shape[0] // 2
-                feature = feature[
-                    middle - timestamps // 2 : middle + timestamps // 2, :
-                ]
-                feature = np.expand_dims(feature, 0)
-            elif mode == "random":
-                start = np.random.randint(0, feature.shape[0] - timestamps)
-                feature = feature[start : start + timestamps, :]
-                feature = np.expand_dims(feature, 0)
-            elif mode == "beginning":
-                feature = feature[:timestamps, :]
-                feature = np.expand_dims(feature, 0)
-            elif mode == "all":
-                n_chunks = max(feature.shape[0] // timestamps, 1)
-                feature = feature[: n_chunks * timestamps, :].reshape(
-                    -1, timestamps, feature.shape[-1]
-                )
-                labels.extend([label] * n_chunks)
-                filenames.extend([filename] * n_chunks)
-            else:
-                raise ValueError(f"mode {mode} not supported")
-
-        features.append(feature)
-
-    if mode == "all":
-        examples["label"] = labels
-        examples["filename"] = filenames
-
-    features = np.vstack(features)
-    if features.shape[0] == 1:
-        features = features.squeeze(0)
-    features = features.tolist()
-
-    examples["feature"] = features
-    return examples
-
-
-def average_encodecmae(examples: list):
-    examples["feature"] = [
-        np.array(feature).squeeze().mean(axis=0) for feature in examples["feature"]
-    ]
-    return examples
-
-
-def norm(examples: list):
-    data = np.array(examples["feature"])
-    mean = np.mean(data)
-    std = np.std(data)
-    examples["feature"] = [
-        (np.array(feature) - mean) / (2 * std) for feature in examples["feature"]
-    ]
-
-    data = np.array(examples["feature"])
-    print(f"data min: {np.min(data):.3f}")
-    print(f"data max: {np.max(data):.3f}")
-
-    return examples
-
-
-def label_to_idx(examples: list):
-    label_set = list(set(examples["label"]))
-    label_set.sort()
-    for i, label in enumerate(label_set):
-        print(f"label {label}: {i}")
-    label_map = {label: i for i, label in enumerate(label_set)}
-    examples["label"] = [label_map[label] for label in examples["label"]]
-
-    return examples
 
 
 def create_protos(
@@ -648,9 +23,9 @@ def create_protos(
     protos_init: str,
     shape: tuple,
     n_protos_per_label: int,
-    labels: set = None,
-    proto_file: Path = None,
-    data_dir: Path = None,
+    labels: Any = None,
+    proto_file: Any = None,
+    data_dir: Any = None,
 ):
     """Init prototypes to random weights, class centroids (kmeans) or to the sample closses to the class centroid (kmeans-sample)"""
 
@@ -664,11 +39,7 @@ def create_protos(
         print(f"protos loaded from {proto_file}")
         protos = torch.tensor(protos)
         assert (
-            protos.shape
-            == (
-                n_protos,
-                *shape,
-            )
+            protos.shape == (n_protos, *shape)
         ), f"protos shape mismatch. found: {protos.shape} expected: {(n_protos, *shape)}"
 
     elif protos_init == "proto-dict":
@@ -729,9 +100,12 @@ def create_protos(
 
 
 def train(
-    data_dir: Path = None,
-    metadata_file: Path = None,
-    protos_init: str = None,
+    data_dir: Any = None,
+    data_dir_test: Any = None,
+    metadata_file_train: Any = None,
+    metadata_file_val: Any = None,
+    metadata_file_test: Any = None,
+    protos_init: Any = None,
     n_protos_per_label: int = 1,
     batch_size: int = 32,
     seed: int = 42,
@@ -741,65 +115,77 @@ def train(
     timestamps: int = 300,
     trim_mode: str = "middle",
     gpu_id: int = 0,
-    proto_file: Path = None,
+    proto_file: Any = None,
     temp: float = 0.1,
     alpha: float = 0.5,
     proto_loss: str = "l2",
     proto_loss_samples: str = "class",
     use_discriminator: bool = False,
     discriminator_type: str = "mlp",
-    checkpoint: Path = None,
-    dataset: str = None,
+    checkpoint: Any = None,
+    dataset: Any = None,
     freeze_protos: bool = False,
-    time_summarization: str = None,
+    time_summarization: Any = None,
     do_normalization: bool = False,
+    total_steps=30000,
 ):
     hyperparams = locals()
 
-    print("creating dataset")
-    ds = Dataset.from_generator(
-        dataset_generator,
-        writer_batch_size=500,
-        gen_kwargs={
-            "metadata_file": metadata_file,
-            "data_dir": data_dir,
-            "dataset": dataset,
-        },
+    if data_dir_test is None:
+        data_dir_test = data_dir
+
+    ds_train, ds_mean, ds_std = get_dataset(
+        metadata_file_train,
+        data_dir,
+        dataset,
+        timestamps,
+        trim_mode,
+        seed=seed,
+        do_normalization=do_normalization,
     )
 
-    # trim embeddings, select beginning, middle or random chunk
-    print("trimming embeddings")
-    ds = ds.map(
-        trim_embeddings,
-        num_proc=32,
-        batched=True,
-        batch_size=32,
-        fn_kwargs={"timestamps": timestamps, "mode": trim_mode},
-    )
+    if metadata_file_val:
+        ds_val, _, _ = get_dataset(
+            metadata_file_val,
+            data_dir,
+            dataset,
+            timestamps,
+            trim_mode,
+            seed=seed,
+            do_normalization=do_normalization,
+            ds_mean=ds_mean,
+            ds_std=ds_std,
+        )
+    else:
+        print(
+            "warning: validation metadata file not detected. using 0.15 of train as val split"
+        )
+        ds_split = ds_train.train_test_split(test_size=0.15)
+        ds_train = ds_split["train"]
+        ds_val = ds_split["test"]
 
-    print("label encoding")
-    ds = ds.map(
-        label2id,
-        fn_kwargs={"labelmap": get_labelmap(dataset)},
-    )
+    if metadata_file_test:
+        ds_test, _, _ = get_dataset(
+            metadata_file_test,
+            data_dir_test,
+            dataset,
+            timestamps,
+            trim_mode,
+            do_normalization=do_normalization,
+            ds_mean=ds_mean,
+            ds_std=ds_std,
+        )
+    else:
+        print(
+            "warning: test metadata file not detected. using 0.15 of train as val split"
+        )
+        ds_split = ds_train.train_test_split(test_size=0.15)
+        ds_train = ds_split["train"]
+        ds_test = ds_split["test"]
 
-    # TODO: check if norm is needed
-    # ds = ds.map(norm, batched=True, batch_size=len(ds))
-
-    # dataset to CUDA
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    ds = ds.with_format("torch", device=device)
-
-    print("creating train splits")
-    ds = ds.train_test_split(test_size=val_test_ratio, seed=seed)
-    ds_train = ds["train"]
-    ds_test = ds["test"]
-    ds_tran_val = ds_train.train_test_split(test_size=val_test_ratio, seed=seed)
-    ds_train = ds_tran_val["train"]
-    ds_val = ds_tran_val["test"]
-
-    time_dim = ds_val["feature"][0].shape[0]
-    feat_dim = ds_val["feature"][0].shape[1]
+    time_dim = timestamps
+    # feat_dim = ds_val["feature"][0].shape[1]
+    feat_dim = 768
     print(f"time_dim: {time_dim}, feat_dim: {feat_dim}")
 
     labels = set(get_labelmap(dataset).keys())
@@ -821,29 +207,26 @@ def train(
         ds_train,
         batch_size=batch_size,
         shuffle=True,
-        # num_workers=20,
     )
     loader_val = utils.data.DataLoader(
         ds_val,
         batch_size=batch_size,
-        # num_workers=20,
     )
     loader_test = utils.data.DataLoader(
         ds_test,
         batch_size=batch_size,
-        # num_workers=10,
     )
 
     if checkpoint is not None:
         print(f"loading checkpoint from {checkpoint}")
-        model = ZinemaNet.load_from_checkpoint(
+        model = PrototypeNet.load_from_checkpoint(
             checkpoint,
             protos=protos,
             time_dim=time_dim,
             feat_dim=feat_dim,
             n_labels=n_labels,
             batch_size=batch_size,
-            total_steps=len(loader_train) * epochs,
+            total_steps=total_steps,
             temp=temp,
             alpha=alpha,
             max_lr=max_lr,
@@ -855,13 +238,13 @@ def train(
             labels=labels,
         )
     else:
-        model = ZinemaNet(
+        model = PrototypeNet(
             protos,
             time_dim=time_dim,
             feat_dim=feat_dim,
             n_labels=n_labels,
             batch_size=batch_size,
-            total_steps=len(loader_train) * epochs,
+            total_steps=total_steps,
             temp=temp,
             alpha=alpha,
             max_lr=max_lr,
@@ -882,7 +265,7 @@ def train(
     logger.log_hyperparams(hyperparams)
 
     trainer = L.Trainer(
-        max_epochs=epochs,
+        max_steps=total_steps,
         devices=[gpu_id],
         reload_dataloaders_every_n_epochs=1,
         num_sanity_val_steps=0,
@@ -908,9 +291,6 @@ def train(
         protos = model.protos
     protos = protos.detach().cpu().numpy()
 
-    # current_timestamp = datetime.now()
-    # formatted_timestamp = current_timestamp.strftime("%y%m%d_%H%M%S")
-
     out_data_dir = Path("out_data")
     out_data_dir.mkdir(exist_ok=True)
 
@@ -922,7 +302,10 @@ if __name__ == "__main__":
     parser = ArgumentParser()
 
     parser.add_argument("--data-dir", type=Path, required=True)
-    parser.add_argument("--metadata-file", type=Path, required=True)
+    parser.add_argument("--data-dir-test", type=Path, required=False)
+    parser.add_argument("--metadata-file-train", type=Path, required=True)
+    parser.add_argument("--metadata-file-val", type=Path)
+    parser.add_argument("--metadata-file-test", type=Path, required=True)
     parser.add_argument(
         "--protos-init",
         choices=[
@@ -965,11 +348,15 @@ if __name__ == "__main__":
         default=None,
         choices=[None, "lstm", "transformer", "dense_res"],
     )
+    parser.add_argument("--total-steps", type=int, default=30000)
 
     args = parser.parse_args()
     train(
         data_dir=args.data_dir,
-        metadata_file=args.metadata_file,
+        data_dir_test=args.data_dir_test,
+        metadata_file_train=args.metadata_file_train,
+        metadata_file_val=args.metadata_file_val,
+        metadata_file_test=args.metadata_file_test,
         protos_init=args.protos_init,
         n_protos_per_label=args.n_protos_per_label,
         batch_size=args.batch_size,
@@ -991,4 +378,5 @@ if __name__ == "__main__":
         dataset=args.dataset,
         time_summarization=args.time_summarization,
         do_normalization=args.do_normalization,
+        total_steps=args.total_steps,
     )

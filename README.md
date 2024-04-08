@@ -2,6 +2,8 @@
 
 Code for the paper [Leveraging Pre-trained Autoencoders for Interpretable Prototype Learning of Music Audio](https://arxiv.org/abs/2402.09318).
 
+The autoencoder code is available in [this repository](https://github.com/mrpep/encodecmae-to-wav).
+
 Sonification results available in the [companion web site](https://palonso.github.io/pecmae/).
 
 

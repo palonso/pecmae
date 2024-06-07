@@ -1,6 +1,5 @@
 lightning_logs/
 codes/
-feat*/
 tb_logs/
 out_data/
 *.pyc
@@ -10,3 +9,6 @@ out_data/
 *.yaml
 *.json
 *.sh
+venv/
+audio/
+features/

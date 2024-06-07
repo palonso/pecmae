@@ -11,3 +11,4 @@ out_data/
 venv/
 audio/
 feats/
+*.egg-info/

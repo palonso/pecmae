@@ -8,7 +8,6 @@ out_data/
 *.pk
 *.yaml
 *.json
-*.sh
 venv/
 audio/
-features/
+feats/

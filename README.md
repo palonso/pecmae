@@ -1,10 +1,10 @@
 # Prototype EnCodecMAE (PECMAE)
 
-Code for the paper [Leveraging Pre-trained Autoencoders for Interpretable Prototype Learning of Music Audio](https://arxiv.org/abs/2402.09318).
+Code for the paper "[Leveraging Pre-trained Autoencoders for Interpretable Prototype Learning of Music Audio](https://arxiv.org/abs/2402.09318)."
 
 The autoencoder code is available in [this repository](https://github.com/mrpep/encodecmae-to-wav).
 
-Sonification results available in the [companion web site](https://palonso.github.io/pecmae/).
+Sonification results are available in the [companion web site](https://palonso.github.io/pecmae/).
 
 
 ## Citation
@@ -47,14 +47,14 @@ The setup script was only tested with Python 3.11 using CentOS 7.5. It may not w
 
 ### Pre-processing
 
-1. Download a dataset (e.g., GTZAN):
+1. Download a dataset:
 
 ```bash
 python src/download.py --dataset gtzan 
 
 ```
 
-Note: right now, we have only implemented the GTZAN dataset.
+Note: For now we have only implemented download functionality for GTZAN, but we could also implement medley-solos-db in the future.
 
 2. Extract the EnCodecMAE-based features:
 

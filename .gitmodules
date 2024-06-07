@@ -1,0 +1,6 @@
+[submodule "encodecmae-to-wav"]
+	path = encodecmae-to-wav
+	url = https://github.com/mrpep/encodecmae-to-wav
+[submodule "encodecmae"]
+	path = encodecmae
+	url = https://github.com/mrpep/encodecmae

@@ -99,10 +99,10 @@ python src/encode_encodecmae.py /your/dataset/ feats/your_dataset/ --model diffu
 2. Create a training script similar to `./scripts/train_pecmae_5_gtzan.sh`.
 
 Your should modify the fields `--data-dir`, `--metadata-file-train`, `--metadata-file-val`, and `--metadata-file-test` to point to your ground truth file.
-Have a look at [./groundtruth/](./groundtruth/) to see examples of the expected format.
+Have a look at [groundtruth/](./groundtruth/) to see examples of the expected format.
 
 
-## Sonifying your prototypes
+## Sonifying the prototypes
 
 TODO
 
